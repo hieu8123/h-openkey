@@ -15,6 +15,8 @@
 
 #include <sys/mman.h>
 #include <unistd.h>
+#include <sys/syscall.h>
+#include <linux/memfd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -114,6 +116,12 @@ private:
 
     void regrabKeyboard();
     void sendBackspaces(uint32_t count);
+
+    // Duong xuat cho ung dung khong noi text-input-v3 (XWayland, Chrome,
+    // VS Code, phan lon terminal): nap mot keymap chi chua dung nhung ky tu
+    // can go, bam chung, roi tra keymap that ve ngay.
+    void typeViaVirtualKeyboard(const std::u32string& out);
+    bool uploadKeymap(zwp_virtual_keyboard_v1* vk, const std::string& keymap);
     bool modActive(const char* name) const;
 
     wl_display* _display = nullptr;
@@ -123,7 +131,9 @@ private:
     zwp_virtual_keyboard_manager_v1* _vkManager = nullptr;
     zwp_input_method_v2* _im = nullptr;
     zwp_input_method_keyboard_grab_v2* _grab = nullptr;
-    zwp_virtual_keyboard_v1* _vk = nullptr;
+    zwp_virtual_keyboard_v1* _vk = nullptr;     // chuyen tiep phim goc
+    zwp_virtual_keyboard_v1* _vkText = nullptr; // go chu bang keymap sinh dong
+    std::string _realKeymap;                    // keymap that, de tra ve sau khi go
 
     xkb_context* _xkbContext = nullptr;
     xkb_keymap* _xkbKeymap = nullptr;
@@ -252,6 +262,8 @@ void WaylandBackend::onKeymap(void* data, zwp_input_method_keyboard_grab_v2*,
         self->_xkbKeymap = xkb_keymap_new_from_string(
             self->_xkbContext, map, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
         self->_xkbState = self->_xkbKeymap ? xkb_state_new(self->_xkbKeymap) : nullptr;
+        // Giu ban sao de tra ve sau moi lan go chu bang keymap sinh dong.
+        self->_realKeymap.assign(map, strnlen(map, size));
         munmap(map, size);
     }
 
@@ -296,9 +308,9 @@ void WaylandBackend::onKey(void* data, zwp_input_method_keyboard_grab_v2*, uint3
     ev.alt = self->modActive(XKB_MOD_NAME_ALT);
     ev.super = self->modActive(XKB_MOD_NAME_LOGO);
 
-    // Khong co o nhap nao dang nhan chu thi khong co gi de sua: tra phim ve
-    // nguyen ven, dung dung toi engine.
-    if (!self->_current.active || !self->_handler) {
+    // Engine chay ke ca khi khong co o nhap text-input-v3 (XWayland, Chrome,
+    // VS Code): luc do ket qua se duoc go ra bang ban phim ao.
+    if (!self->_handler) {
         self->forwardKey(ev);
         self->flush();
         return;
@@ -355,6 +367,10 @@ bool WaylandBackend::start() {
         return false;
     }
 
+    // Ban phim ao thu hai danh rieng cho viec go chu: keymap cua no thay doi
+    // lien tuc, khong duoc dung chung voi ban phim chuyen tiep phim goc.
+    _vkText = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(_vkManager, _seat);
+
     _im = zwp_input_method_manager_v2_get_input_method(_imManager, _seat);
     if (!_im) {
         _error = "khong tao duoc input method";
@@ -387,6 +403,7 @@ void WaylandBackend::stop() {
     if (_grab) { zwp_input_method_keyboard_grab_v2_release(_grab); _grab = nullptr; }
     if (_im) { zwp_input_method_v2_destroy(_im); _im = nullptr; }
     if (_vk) { zwp_virtual_keyboard_v1_destroy(_vk); _vk = nullptr; }
+    if (_vkText) { zwp_virtual_keyboard_v1_destroy(_vkText); _vkText = nullptr; }
     if (_xkbState) { xkb_state_unref(_xkbState); _xkbState = nullptr; }
     if (_xkbKeymap) { xkb_keymap_unref(_xkbKeymap); _xkbKeymap = nullptr; }
     if (_xkbContext) { xkb_context_unref(_xkbContext); _xkbContext = nullptr; }
@@ -410,12 +427,93 @@ void WaylandBackend::sendBackspaces(uint32_t count) {
     }
 }
 
+
+bool WaylandBackend::uploadKeymap(zwp_virtual_keyboard_v1* vk, const std::string& keymap) {
+    if (!vk || keymap.empty()) return false;
+
+    const int fd = static_cast<int>(syscall(SYS_memfd_create, "openkey-keymap", MFD_CLOEXEC));
+    if (fd < 0) return false;
+
+    const size_t size = keymap.size() + 1;
+    if (ftruncate(fd, static_cast<off_t>(size)) != 0) {
+        close(fd);
+        return false;
+    }
+    void* p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (p == MAP_FAILED) {
+        close(fd);
+        return false;
+    }
+    std::memcpy(p, keymap.c_str(), size);
+    munmap(p, size);
+
+    zwp_virtual_keyboard_v1_keymap(vk, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, fd,
+                                   static_cast<uint32_t>(size));
+    close(fd);
+    return true;
+}
+
+void WaylandBackend::typeViaVirtualKeyboard(const std::u32string& out) {
+    if (!_vkText || out.empty()) return;
+
+    // Mot phim cho moi ky tu. xkb keycode = evdev + 8, va khoang hop le dung
+    // o 255, nen toi da 246 ky tu mot lan — thua suc cho MAX_BUFF cua engine.
+    constexpr size_t kMaxChars = 246;
+    const size_t n = out.size() > kMaxChars ? kMaxChars : out.size();
+
+    std::string keymap =
+        "xkb_keymap {\n"
+        "xkb_keycodes {\n  minimum = 8;\n  maximum = 255;\n";
+    for (size_t i = 0; i < n; i++) {
+        keymap += "  <K" + std::to_string(i) + "> = " + std::to_string(i + 1 + kEvdevToX11) + ";\n";
+    }
+    keymap +=
+        "};\n"
+        "xkb_types { include \"complete\" };\n"
+        "xkb_compatibility { include \"complete\" };\n"
+        "xkb_symbols {\n  name[Group1] = \"OpenKey\";\n";
+    for (size_t i = 0; i < n; i++) {
+        char sym[32];
+        std::snprintf(sym, sizeof(sym), "U%04X", static_cast<unsigned>(out[i]));
+        keymap += "  key <K" + std::to_string(i) + "> { [ " + sym + " ] };\n";
+    }
+    keymap += "};\n};\n";
+
+    if (!uploadKeymap(_vkText, keymap)) {
+        OK_LOG("khong nap duoc keymap sinh dong");
+        return;
+    }
+
+    // Khong duoc de sot phim bo tro nao dang giu, neu khong chu se ra sai.
+    zwp_virtual_keyboard_v1_modifiers(_vkText, 0, 0, 0, 0);
+    for (size_t i = 0; i < n; i++) {
+        const uint32_t code = static_cast<uint32_t>(i + 1);
+        zwp_virtual_keyboard_v1_key(_vkText, _lastTime, code, WL_KEYBOARD_KEY_STATE_PRESSED);
+        zwp_virtual_keyboard_v1_key(_vkText, _lastTime, code, WL_KEYBOARD_KEY_STATE_RELEASED);
+    }
+
+    // Tra keymap that ve ngay: neu khong, phim go binh thuong sau do se sai.
+    uploadKeymap(_vkText, _realKeymap);
+}
+
 void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& out) {
-    if (!_im || !_current.active) return;
+    if (!_im) return;
 
     OK_LOG("sendResult: xoa %u byte (%u phim) roi chen \"%s\" [%s]", del.utf8Bytes,
            del.keyPresses, utf8Encode(out).c_str(),
-           _current.hasSurroundingText ? "surrounding-text" : "backspace-fallback");
+           !_current.active        ? "ban-phim-ao"
+           : _current.hasSurroundingText ? "surrounding-text"
+                                         : "backspace-fallback");
+
+    if (!_current.active) {
+        // Khong co o nhap text-input-v3 nao: XWayland, Chrome, VS Code,
+        // phan lon terminal. commit_string se roi vao hu khong, nen phai
+        // go bang ban phim ao.
+        if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
+        typeViaVirtualKeyboard(out);
+        flush();
+        return;
+    }
 
     if (_current.hasSurroundingText) {
         // Duong chinh: mot lan xoa gon gang, dem theo byte UTF-8.
@@ -423,7 +521,8 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
             zwp_input_method_v2_delete_surrounding_text(_im, del.utf8Bytes, 0);
         }
     } else if (del.keyPresses > 0) {
-        // Duong fallback: dung ky thuat backspace nhu ban macOS va Windows.
+        // Ung dung noi text-input-v3 nhung khong gui surrounding text: dung
+        // ky thuat backspace nhu ban macOS va Windows.
         sendBackspaces(del.keyPresses);
     }
 
