@@ -17,6 +17,9 @@ namespace openkey {
 // keycode X11). Bit 9 la Option/Alt theo quy uoc trong Engine.h.
 constexpr int kDefaultSwitchKeyStatus = 0x200 | KEY_Z;
 
+// Gia tri quy uoc cua engine cho phim tat chi gom phim bo tro, khong co phim chinh.
+constexpr int kSwitchKeyModifiersOnly = 0xFE;
+
 // Dat toan bo bien engine ve gia tri mac dinh: Telex, Unicode, tieng Viet bat.
 void resetAppStateToDefault();
 

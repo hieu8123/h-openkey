@@ -14,6 +14,8 @@
 #include <QPainter>
 #include <QPixmap>
 
+#include "ConvertToolDialog.h"
+
 #include "Config.h"
 #include "Engine.h"
 #include "OpenKeyCore.h"
@@ -80,6 +82,13 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
 
     connect(_menu->addAction(tr("Bảng điều khiển…")), &QAction::triggered, this,
             [this] { emit controlPanelRequested(); });
+
+    connect(_menu->addAction(tr("Công cụ chuyển mã…")), &QAction::triggered, this, [] {
+        // Khong co cua so cha: bang dieu khien co the dang dong.
+        auto* dialog = new ConvertToolDialog();
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->show();
+    });
 
     _menu->addSeparator();
 

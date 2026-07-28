@@ -141,19 +141,47 @@ void OpenKeyCore::onFocusChanged(const std::string& appId) {
     }
 }
 
-bool OpenKeyCore::matchSwitchKey(const KeyEvent& ev) const {
-    const int wanted = GET_SWITCH_KEY(vSwitchKeyStatus);
-    if (wanted == 0xFE) {
-        // Phim tat chi gom phim bo tro. Chua ho tro o giai doan nay.
-        return false;
-    }
-    if (static_cast<int>(ev.keycode) != wanted) {
-        return false;
-    }
+bool OpenKeyCore::modifiersMatchSwitchKey(const KeyEvent& ev) const {
     return HAS_CONTROL(vSwitchKeyStatus) == (ev.ctrl ? 1 : 0) &&
            HAS_OPTION(vSwitchKeyStatus) == (ev.alt ? 1 : 0) &&
            HAS_COMMAND(vSwitchKeyStatus) == (ev.super ? 1 : 0) &&
            HAS_SHIFT(vSwitchKeyStatus) == (ev.shift ? 1 : 0);
+}
+
+bool OpenKeyCore::matchSwitchKey(const KeyEvent& ev) const {
+    const int wanted = GET_SWITCH_KEY(vSwitchKeyStatus);
+    if (wanted == kSwitchKeyModifiersOnly) {
+        return false; // xu ly rieng o handleModifierOnlySwitchKey
+    }
+    return static_cast<int>(ev.keycode) == wanted && modifiersMatchSwitchKey(ev);
+}
+
+bool OpenKeyCore::handleModifierOnlySwitchKey(const KeyEvent& ev) {
+    if (GET_SWITCH_KEY(vSwitchKeyStatus) != kSwitchKeyModifiersOnly) {
+        return false;
+    }
+
+    if (!isModifierKey(ev.keycode)) {
+        // Co phim khac xen vao: day la mot to hop that su, khong phai y dinh
+        // doi che do. Huy trang thai san sang.
+        if (ev.pressed) {
+            _switchKeyArmed = false;
+        }
+        return false;
+    }
+
+    if (modifiersMatchSwitchKey(ev)) {
+        _switchKeyArmed = true;
+        return false;
+    }
+
+    // To hop vua bi pha vo. Neu truoc do da du thi day chinh la luc nha ra.
+    if (_switchKeyArmed) {
+        _switchKeyArmed = false;
+        toggleLanguage();
+        return true;
+    }
+    return false;
 }
 
 void OpenKeyCore::appendEngineChar(uint32_t data, std::u32string& text,
@@ -195,7 +223,17 @@ void OpenKeyCore::emitResult(int backspaceCount, const std::u32string& text,
 }
 
 KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
-    if (!ev.pressed || _suspended) {
+    if (_suspended) {
+        return KeyVerdict::Forward;
+    }
+
+    // Phai xet ca luc nha phim, vi phim tat chi gom phim bo tro duoc kich hoat
+    // khi nha ra chu khong phai khi bam xuong.
+    if (handleModifierOnlySwitchKey(ev)) {
+        return KeyVerdict::Swallow;
+    }
+
+    if (!ev.pressed) {
         return KeyVerdict::Forward;
     }
 

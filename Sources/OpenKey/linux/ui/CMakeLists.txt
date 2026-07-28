@@ -4,6 +4,8 @@ set(CMAKE_AUTOMOC ON)
 
 add_executable(openkey
     main.cpp
+    ConvertToolDialog.cpp
+    MacroDialog.cpp
     MainWindow.cpp
     TrayIcon.cpp
 )

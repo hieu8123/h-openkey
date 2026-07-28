@@ -17,6 +17,8 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 
+#include "MacroDialog.h"
+
 #include "AppState.h"
 #include "Config.h"
 #include "Engine.h"
@@ -49,6 +51,16 @@ void fill(QComboBox* box, const Choice* choices, size_t count) {
     for (size_t i = 0; i < count; i++) {
         box->addItem(QString::fromUtf8(choices[i].label), choices[i].value);
     }
+}
+
+// Bang chu cai theo keycode X11, dung chung voi platforms/linux.h.
+int keycodeForLetter(char letter) {
+    static const int table[26] = {
+        KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I,
+        KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R,
+        KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z};
+    if (letter < 'A' || letter > 'Z') return -1;
+    return table[letter - 'A'];
 }
 
 void selectValue(QComboBox* box, int value) {
@@ -204,8 +216,10 @@ QWidget* MainWindow::buildBasicTab() {
     macroRow->addLayout(macroGrid);
 
     auto* macroButton = new QPushButton(tr("Bảng gõ tắt"), macroGroup);
-    macroButton->setEnabled(false);
-    macroButton->setToolTip(tr("Sắp có"));
+    connect(macroButton, &QPushButton::clicked, this, [this] {
+        MacroDialog dialog(_config, this);
+        dialog.exec();
+    });
     macroRow->addWidget(macroButton);
 
     auto* macroGrid2 = new QGridLayout;
@@ -224,14 +238,84 @@ QWidget* MainWindow::buildBasicTab() {
 QWidget* MainWindow::buildHotkeyTab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+
+    auto* group = new QGroupBox(tr("Phím chuyển tiếng Việt / tiếng Anh"), page);
+    auto* grid = new QGridLayout(group);
+
+    _hotkeyCtrl = new QCheckBox(tr("Ctrl"), group);
+    _hotkeyAlt = new QCheckBox(tr("Alt"), group);
+    _hotkeyShift = new QCheckBox(tr("Shift"), group);
+    _hotkeySuper = new QCheckBox(tr("Super"), group);
+    grid->addWidget(_hotkeyCtrl, 0, 0);
+    grid->addWidget(_hotkeyAlt, 0, 1);
+    grid->addWidget(_hotkeyShift, 0, 2);
+    grid->addWidget(_hotkeySuper, 0, 3);
+
+    _hotkeyKey = new QComboBox(group);
+    _hotkeyKey->addItem(tr("(chỉ phím bổ trợ)"), kSwitchKeyModifiersOnly);
+    for (char c = 'A'; c <= 'Z'; c++) {
+        const int keycode = keycodeForLetter(c);
+        if (keycode > 0) {
+            _hotkeyKey->addItem(QString(QChar(c)), keycode);
+        }
+    }
+    grid->addWidget(new QLabel(tr("Phím")), 1, 0);
+    grid->addWidget(_hotkeyKey, 1, 1, 1, 3);
+
+    _hotkeyPreview = new QLabel(group);
+    grid->addWidget(_hotkeyPreview, 2, 0, 1, 4);
+
+    auto onChanged = [this] {
+        if (_loading) return;
+        readHotkeyFromUi();
+        writeHotkeyToUi();
+        emit settingsChanged();
+    };
+    for (QCheckBox* box : {_hotkeyCtrl, _hotkeyAlt, _hotkeyShift, _hotkeySuper}) {
+        connect(box, &QCheckBox::toggled, this, onChanged);
+    }
+    connect(_hotkeyKey, &QComboBox::currentIndexChanged, this, onChanged);
+
+    layout->addWidget(group);
+
     auto* note = new QLabel(
-        tr("Phím chuyển giữa tiếng Việt và tiếng Anh hiện là Alt + Z.\n"
-           "Phần cho phép tự chọn tổ hợp phím đang được làm."),
+        tr("Chọn \"(chỉ phím bổ trợ)\" nếu muốn dùng kiểu Ctrl+Shift: khi đó chế độ "
+           "đổi lúc bạn nhả tổ hợp ra, và sẽ không đổi nếu có phím khác được bấm xen "
+           "vào giữa."),
         page);
     note->setWordWrap(true);
     layout->addWidget(note);
     layout->addStretch(1);
     return page;
+}
+
+void MainWindow::readHotkeyFromUi() {
+    int status = _hotkeyKey->currentData().toInt() & 0xFF;
+    if (_hotkeyCtrl->isChecked()) status |= 0x100;
+    if (_hotkeyAlt->isChecked()) status |= 0x200;
+    if (_hotkeySuper->isChecked()) status |= 0x400;
+    if (_hotkeyShift->isChecked()) status |= 0x800;
+    vSwitchKeyStatus = status;
+}
+
+void MainWindow::writeHotkeyToUi() {
+    QStringList parts;
+    if (HAS_CONTROL(vSwitchKeyStatus)) parts << "Ctrl";
+    if (HAS_OPTION(vSwitchKeyStatus)) parts << "Alt";
+    if (HAS_COMMAND(vSwitchKeyStatus)) parts << "Super";
+    if (HAS_SHIFT(vSwitchKeyStatus)) parts << "Shift";
+
+    const int key = GET_SWITCH_KEY(vSwitchKeyStatus);
+    if (key != kSwitchKeyModifiersOnly) {
+        const int index = _hotkeyKey->findData(key);
+        parts << (index >= 0 ? _hotkeyKey->itemText(index) : tr("?"));
+    }
+
+    if (parts.isEmpty()) {
+        _hotkeyPreview->setText(tr("Chưa đặt phím chuyển chế độ."));
+    } else {
+        _hotkeyPreview->setText(tr("Tổ hợp hiện tại: %1").arg(parts.join(" + ")));
+    }
 }
 
 QWidget* MainWindow::buildSystemTab() {
@@ -275,6 +359,13 @@ void MainWindow::refreshFromState() {
     for (const auto& bound : _checks) {
         bound.box->setChecked(*bound.value != 0);
     }
+
+    _hotkeyCtrl->setChecked(HAS_CONTROL(vSwitchKeyStatus));
+    _hotkeyAlt->setChecked(HAS_OPTION(vSwitchKeyStatus));
+    _hotkeySuper->setChecked(HAS_COMMAND(vSwitchKeyStatus));
+    _hotkeyShift->setChecked(HAS_SHIFT(vSwitchKeyStatus));
+    selectValue(_hotkeyKey, GET_SWITCH_KEY(vSwitchKeyStatus));
+    writeHotkeyToUi();
 
     _loading = false;
 }

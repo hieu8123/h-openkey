@@ -61,6 +61,12 @@ private:
     };
 
     bool matchSwitchKey(const KeyEvent& ev) const;
+    bool modifiersMatchSwitchKey(const KeyEvent& ev) const;
+
+    // Xu ly loai phim tat chi gom phim bo tro (vi du Ctrl+Shift): khong co
+    // phim chinh nao nen phai bat luc NHA ra, va chi khi khong co phim nao
+    // khac duoc bam xen vao giua.
+    bool handleModifierOnlySwitchKey(const KeyEvent& ev);
 
     // Duyet charData/macroData, dung chuoi ra va ghi chi phi tung ky tu.
     void appendEngineChar(uint32_t data, std::u32string& text,
@@ -78,6 +84,7 @@ private:
 
     std::string _focusedAppId;
     bool _suspended = false;
+    bool _switchKeyArmed = false;
 };
 
 } // namespace openkey
