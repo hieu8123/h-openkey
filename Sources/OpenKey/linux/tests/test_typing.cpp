@@ -117,6 +117,33 @@ void multiWordTest() {
           "tiếng Việt");
 }
 
+// Hoi quy: phim bo tro tung duoc nap vao engine nhu ky tu, lam hong bo dem tu
+// dang go va tat luon viec xu ly cho toi khi ngat tu. Phat hien khi chay that
+// tren COSMIC: bam Alt roi go thi khong ra chu nao nua.
+void modifierKeyTest() {
+    std::printf("Phim bo tro khong duoc lam hong bo dem:\n");
+    openkey::resetAppStateToDefault();
+
+    openkey::FakeBackend backend;
+    openkey::OpenKeyCore core(backend);
+    core.attach();
+    core.resetTypingState();
+
+    // Alt trai (keycode X11 64), giong dung chuoi da thay trong log that.
+    openkey::KeyEvent alt;
+    alt.pressed = true;
+    alt.keycode = 64;
+    backend.feed(alt);
+
+    for (char c : std::string("vieejt")) {
+        openkey::KeyEvent ev;
+        ev.pressed = true;
+        ev.keycode = keycodeForChar(c);
+        backend.feed(ev);
+    }
+    check("Alt roi 'vieejt'", backend.buffer, "việt");
+}
+
 } // namespace
 
 int main() {
@@ -124,6 +151,7 @@ int main() {
     vniTests();
     modernOrthographyTest();
     multiWordTest();
+    modifierKeyTest();
 
     if (failures == 0) {
         std::printf("\nTat ca deu dat.\n");

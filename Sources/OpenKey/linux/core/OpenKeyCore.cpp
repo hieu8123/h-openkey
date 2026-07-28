@@ -9,12 +9,71 @@
 
 #include "OpenKeyCore.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
 #include "AppState.h"
 #include "CharCodec.h"
 #include "Engine.h"
 #include "SmartSwitchKey.h"
 
 namespace openkey {
+namespace {
+
+// Phim bo tro. Tuyet doi khong duoc dua vao engine: platforms/linux.h khong co
+// ma cho chung, nen engine se nhet rac vao bo dem tu dang go, kiem tra chinh ta
+// that bai, roi tat luon viec xu ly cho toi khi ngat tu. Ban macOS khong dinh
+// loi nay vi Cmd/Alt/Shift den qua flagsChanged chu khong phai keyDown.
+bool isModifierKey(uint32_t keycode) {
+    switch (keycode) {
+        case 50:  // Shift_L
+        case 62:  // Shift_R
+        case 37:  // Control_L
+        case 105: // Control_R
+        case 64:  // Alt_L
+        case 108: // Alt_R
+        case 133: // Super_L
+        case 134: // Super_R
+        case 66:  // Caps_Lock
+        case 77:  // Num_Lock
+        case 78:  // Scroll_Lock
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Phim khong sinh ky tu va co the lam con tro nhay cho khac. Engine khong biet
+// chung, nen ta tu ngat tu thay vi de chung roi vao bo dem.
+bool isNonTextKey(uint32_t keycode) {
+    if (keycode >= 67 && keycode <= 76) return true;   // F1..F10
+    if (keycode == 95 || keycode == 96) return true;   // F11, F12
+    switch (keycode) {
+        case 107: // Print
+        case 110: // Home
+        case 112: // Prior (Page Up)
+        case 115: // End
+        case 117: // Next (Page Down)
+        case 118: // Insert
+        case 119: // Delete (xoa toi truoc)
+        case 127: // Pause
+        case 135: // Menu
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool coreDebug() {
+    static const bool on = [] {
+        const char* v = std::getenv("OPENKEY_DEBUG");
+        return v && *v && std::strcmp(v, "0") != 0;
+    }();
+    return on;
+}
+
+} // namespace
 
 OpenKeyCore::OpenKeyCore(IBackend& backend) : _backend(backend) {
     _hook = static_cast<vKeyHookState*>(vKeyInit());
@@ -122,10 +181,28 @@ KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
         return KeyVerdict::Swallow;
     }
 
+    if (isModifierKey(ev.keycode)) {
+        return KeyVerdict::Forward;
+    }
+
+    if (isNonTextKey(ev.keycode)) {
+        resetTypingState();
+        return KeyVerdict::Forward;
+    }
+
     const Uint8 capsStatus = ev.shift ? 1 : (ev.capsLock ? 2 : 0);
     vKeyHandleEvent(vKeyEvent::Keyboard, vKeyEventState::KeyDown,
                     static_cast<Uint16>(ev.keycode), capsStatus,
                     ev.otherControlKey());
+
+    if (coreDebug()) {
+        std::fprintf(stderr,
+                     "[core] keycode=%u caps=%u ctrl=%d code=%u ext=%u bs=%u nc=%u "
+                     "lang=%d input=%d\n",
+                     ev.keycode, capsStatus, (int)ev.otherControlKey(), _hook->code,
+                     _hook->extCode, _hook->backspaceCount, _hook->newCharCount,
+                     vLanguage, vInputType);
+    }
 
     if (_hook->code == vDoNothing) {
         // Engine khong dung toi phim nay, nhung van phai ghi lai anh huong cua

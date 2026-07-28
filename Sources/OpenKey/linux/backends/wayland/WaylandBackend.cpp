@@ -112,6 +112,7 @@ private:
                             uint32_t locked, uint32_t group);
     static void onRepeatInfo(void*, zwp_input_method_keyboard_grab_v2*, int32_t, int32_t) {}
 
+    void regrabKeyboard();
     void sendBackspaces(uint32_t count);
     bool modActive(const char* name) const;
 
@@ -134,6 +135,11 @@ private:
         bool active = false;
         bool hasSurroundingText = false;
     } _pending, _current;
+
+    // cosmic-comp chi cai keyboard grab tai thoi diem grab_keyboard duoc goi.
+    // Grab tao luc khoi dong (khi chua co o nhap nao) bi bo di sau lan doi
+    // focus dau tien, nen phai grab lai moi lan input method duoc kich hoat.
+    bool _grabbedWhileActive = false;
 
     uint32_t _serial = 0; // so su kien `done` da nhan, dung cho commit()
     uint32_t _lastTime = 0;
@@ -185,6 +191,22 @@ void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*, const c
     static_cast<WaylandBackend*>(data)->_pending.hasSurroundingText = true;
 }
 
+void WaylandBackend::regrabKeyboard() {
+    static const zwp_input_method_keyboard_grab_v2_listener grabListener = {
+        onKeymap, onKey, onModifiers, onRepeatInfo};
+
+    if (_grab) {
+        zwp_input_method_keyboard_grab_v2_release(_grab);
+        _grab = nullptr;
+    }
+    _grab = zwp_input_method_v2_grab_keyboard(_im);
+    if (_grab) {
+        zwp_input_method_keyboard_grab_v2_add_listener(_grab, &grabListener, this);
+        OK_LOG("grab lai ban phim");
+    }
+    flush();
+}
+
 void WaylandBackend::onDone(void* data, zwp_input_method_v2*) {
     auto* self = static_cast<WaylandBackend*>(data);
     self->_serial++;
@@ -192,6 +214,13 @@ void WaylandBackend::onDone(void* data, zwp_input_method_v2*) {
     self->_caps.hasSurroundingText = self->_current.hasSurroundingText;
     OK_LOG("done: active=%d surroundingText=%d serial=%u", self->_current.active,
            self->_current.hasSurroundingText, self->_serial);
+
+    if (self->_current.active && !self->_grabbedWhileActive) {
+        self->regrabKeyboard();
+        self->_grabbedWhileActive = true;
+    } else if (!self->_current.active) {
+        self->_grabbedWhileActive = false;
+    }
 }
 
 void WaylandBackend::onUnavailable(void* data, zwp_input_method_v2*) {
