@@ -87,6 +87,7 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
     _inputTypeGroup = new QActionGroup(this);
     for (const auto& choice : kInputTypes) {
         QAction* action = inputMenu->addAction(choice.label);
+        action->setData(choice.value);
         action->setCheckable(true);
         action->setChecked(vInputType == choice.value);
         _inputTypeGroup->addAction(action);
@@ -102,6 +103,7 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
     _codeTableGroup = new QActionGroup(this);
     for (const auto& choice : kCodeTables) {
         QAction* action = codeMenu->addAction(choice.label);
+        action->setData(choice.value);
         action->setCheckable(true);
         action->setChecked(vCodeTable == choice.value);
         _codeTableGroup->addAction(action);
@@ -110,6 +112,7 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
             vCodeTable = value;
             onTableCodeChange();
             _core.resetTypingState();
+            _core.rememberCurrentApp();
             onSettingChanged();
         });
     }
@@ -141,6 +144,17 @@ void TrayIcon::rebuildIcon() {
 void TrayIcon::onSettingChanged() {
     rebuildIcon();
     _config.save();
+}
+
+void TrayIcon::refresh() {
+    rebuildIcon();
+    for (QActionGroup* group : {_inputTypeGroup, _codeTableGroup}) {
+        if (!group) continue;
+        const int current = group == _inputTypeGroup ? vInputType : vCodeTable;
+        for (QAction* action : group->actions()) {
+            action->setChecked(action->data().toInt() == current);
+        }
+    }
 }
 
 void TrayIcon::show() { _tray.show(); }

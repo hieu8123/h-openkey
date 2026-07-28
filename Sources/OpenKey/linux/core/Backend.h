@@ -85,8 +85,15 @@ public:
         _handler = std::move(h);
     }
 
+    // Goi khi ung dung dang focus doi. Chi backend nao co caps().hasAppId moi
+    // goi toi; cac backend khac de nguyen.
+    void setFocusHandler(std::function<void(const std::string&)> h) {
+        _focusHandler = std::move(h);
+    }
+
 protected:
     std::function<KeyVerdict(const KeyEvent&)> _handler;
+    std::function<void(const std::string&)> _focusHandler;
 };
 
 // Backend nao se duoc dung. `Auto` dò theo thu tu wayland -> x11.

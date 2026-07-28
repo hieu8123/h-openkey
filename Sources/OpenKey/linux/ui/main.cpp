@@ -98,10 +98,15 @@ int main(int argc, char** argv) {
     QObject::connect(&notifier, &QSocketNotifier::activated, &app,
                      [&backend] { backend->dispatchEvents(); });
 
+    openkey::TrayIcon tray(config, core);
+
+    // Smart Switch Key co the tu doi ngon ngu khi chuyen ung dung; bieu tuong
+    // khay phai phan anh dieu do, neu khong nguoi dung khong biet dang o che do nao.
+    core.onStateChanged = [&tray] { tray.refresh(); };
+
     openkey::MainWindow window(config, core);
     window.resize(680, 520);
 
-    openkey::TrayIcon tray(config, core);
     QObject::connect(&tray, &openkey::TrayIcon::controlPanelRequested, &app, [&] {
         window.refreshFromState();
         window.show();

@@ -10,6 +10,7 @@
 #define OPENKEY_LINUX_OPENKEYCORE_H
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,14 @@ public:
 
     // Tam ngung khi chinh cua so OpenKey dang nhan focus, tranh vong lap phan hoi.
     void setSuspended(bool suspended);
+
+    // Ghi nho ngon ngu va bang ma hien tai cho ung dung dang focus. Goi moi khi
+    // nguoi dung tu doi, de lan sau quay lai ung dung do thi khoi phai doi nua.
+    void rememberCurrentApp();
+
+    // Bao cho giao dien biet trang thai vua doi (vi du Smart Switch Key vua tu
+    // chuyen ngon ngu), de bieu tuong khay cap nhat theo.
+    std::function<void()> onStateChanged;
 
     // Xoa ky uc ve nhung gi da nam trong tu hien tai. Goi khi khong con chac
     // trang thai cua o nhap con khop voi ky uc cua minh.

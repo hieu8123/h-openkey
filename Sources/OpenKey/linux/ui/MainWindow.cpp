@@ -123,6 +123,7 @@ QWidget* MainWindow::buildControlGroup() {
         vCodeTable = _codeTable->currentData().toInt();
         onTableCodeChange();
         _core.resetTypingState();
+        _core.rememberCurrentApp();
         emit settingsChanged();
     });
     connect(_inputType, &QComboBox::currentIndexChanged, this, [this] {

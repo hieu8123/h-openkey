@@ -30,6 +30,7 @@ public:
     TrayIcon(Config& config, OpenKeyCore& core, QObject* parent = nullptr);
 
     void show();
+    void refresh();
 
 signals:
     void controlPanelRequested();

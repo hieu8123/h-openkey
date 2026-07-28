@@ -13,7 +13,9 @@ set(PROTO_HEADERS "")
 
 # Sinh header va glue code cho tung protocol. Chung khong duoc commit vao repo:
 # sinh lai luc build de luon khop voi libwayland tren may.
-foreach(proto input-method-unstable-v2 virtual-keyboard-unstable-v1)
+foreach(proto input-method-unstable-v2 virtual-keyboard-unstable-v1
+             ext-foreign-toplevel-list-v1 cosmic-toplevel-info-unstable-v1
+             ext-workspace-v1 cosmic-workspace-unstable-v1)
     set(xml ${PROTO_DIR}/${proto}.xml)
     set(hdr ${GEN_DIR}/${proto}-client-protocol.h)
     set(src ${GEN_DIR}/${proto}-protocol.c)
@@ -38,6 +40,7 @@ endforeach()
 
 add_library(openkey_wayland STATIC
     WaylandBackend.cpp
+    ToplevelWatcher.cpp
     ${PROTO_SOURCES}
     ${PROTO_HEADERS}
 )

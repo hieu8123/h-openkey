@@ -81,6 +81,7 @@ OpenKeyCore::OpenKeyCore(IBackend& backend) : _backend(backend) {
 
 void OpenKeyCore::attach() {
     _backend.setKeyHandler([this](const KeyEvent& ev) { return onKey(ev); });
+    _backend.setFocusHandler([this](const std::string& appId) { onFocusChanged(appId); });
 }
 
 void OpenKeyCore::resetTypingState() {
@@ -102,6 +103,16 @@ void OpenKeyCore::setSuspended(bool suspended) {
 void OpenKeyCore::toggleLanguage() {
     vLanguage = vLanguage == 1 ? 0 : 1;
     resetTypingState();
+    rememberCurrentApp();
+}
+
+void OpenKeyCore::rememberCurrentApp() {
+    if (!vUseSmartSwitchKey || _focusedAppId.empty()) {
+        return;
+    }
+    // Engine goi chung mot o nho cho ca hai: bit 0 la ngon ngu, cac bit tren
+    // la bang ma.
+    setAppInputMethodStatus(_focusedAppId, vLanguage | (vCodeTable << 1));
 }
 
 void OpenKeyCore::onFocusChanged(const std::string& appId) {
@@ -116,11 +127,17 @@ void OpenKeyCore::onFocusChanged(const std::string& appId) {
     // cac bit tren la bang ma.
     const int current = vLanguage | (vCodeTable << 1);
     const int remembered = getAppInputMethodStatus(appId, current);
-    if (remembered >= 0) {
-        vLanguage = remembered & 0x1;
-        if (vRememberCode) {
-            vCodeTable = remembered >> 1;
-        }
+    if (remembered < 0 || remembered == current) {
+        return;
+    }
+
+    vLanguage = remembered & 0x1;
+    if (vRememberCode) {
+        vCodeTable = remembered >> 1;
+        onTableCodeChange();
+    }
+    if (onStateChanged) {
+        onStateChanged();
     }
 }
 

@@ -26,6 +26,9 @@
 #include <vector>
 
 #include "CharCodec.h"
+#include "ToplevelWatcher.h"
+#include "cosmic-toplevel-info-unstable-v1-client-protocol.h"
+#include "ext-foreign-toplevel-list-v1-client-protocol.h"
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
 
@@ -145,6 +148,10 @@ private:
     zwp_virtual_keyboard_manager_v1* _vkManager = nullptr;
     zwp_input_method_v2* _im = nullptr;
     zwp_input_method_keyboard_grab_v2* _grab = nullptr;
+    ext_foreign_toplevel_list_v1* _toplevelList = nullptr;
+    zcosmic_toplevel_info_v1* _toplevelInfo = nullptr;
+    ToplevelWatcher _toplevels;
+
     zwp_virtual_keyboard_v1* _vk = nullptr;     // chuyen tiep phim goc
     zwp_virtual_keyboard_v1* _vkText = nullptr; // go chu bang keymap sinh dong
     std::string _realKeymap;                    // keymap that, de tra ve sau khi go
@@ -185,6 +192,17 @@ void WaylandBackend::onGlobal(void* data, wl_registry* r, uint32_t id, const cha
     } else if (std::strcmp(iface, zwp_input_method_manager_v2_interface.name) == 0) {
         self->_imManager = static_cast<zwp_input_method_manager_v2*>(
             wl_registry_bind(r, id, &zwp_input_method_manager_v2_interface, 1));
+    } else if (std::strcmp(iface, ext_foreign_toplevel_list_v1_interface.name) == 0) {
+        self->_toplevelList = static_cast<ext_foreign_toplevel_list_v1*>(
+            wl_registry_bind(r, id, &ext_foreign_toplevel_list_v1_interface, 1));
+    } else if (std::strcmp(iface, zcosmic_toplevel_info_v1_interface.name) == 0) {
+        // Can it nhat ban 2: tu ban do tro di moi co get_cosmic_toplevel de
+        // gan trang thai vao handle cua giao thuc chuan.
+        if (version >= 2) {
+            const uint32_t v = version < 3 ? version : 3;
+            self->_toplevelInfo = static_cast<zcosmic_toplevel_info_v1*>(
+                wl_registry_bind(r, id, &zcosmic_toplevel_info_v1_interface, v));
+        }
     } else if (std::strcmp(iface, zwp_virtual_keyboard_manager_v1_interface.name) == 0) {
         self->_vkManager = static_cast<zwp_virtual_keyboard_manager_v1*>(
             wl_registry_bind(r, id, &zwp_virtual_keyboard_manager_v1_interface, 1));
@@ -407,7 +425,20 @@ bool WaylandBackend::start() {
     zwp_input_method_keyboard_grab_v2_add_listener(_grab, &grabListener, this);
 
     _caps.canForwardKey = true;
-    _caps.hasAppId = false; // Smart Switch Key thuoc giai doan 2.
+
+    // Smart Switch Key chi chay duoc khi compositor cho biet cua so nao dang
+    // duoc kich hoat. Thieu thi bo qua, phan con lai van chay binh thuong.
+    _toplevels.onFocusChanged = [this](const std::string& appId) {
+        _appId = appId;
+        OK_LOG("focus doi sang: %s", appId.c_str());
+        if (_focusHandler) {
+            _focusHandler(appId);
+        }
+    };
+    _caps.hasAppId = _toplevels.start(_toplevelList, _toplevelInfo);
+    if (!_caps.hasAppId) {
+        OK_LOG("khong theo doi duoc cua so dang focus, tat Smart Switch Key");
+    }
 
     wl_display_roundtrip(_display);
 
@@ -416,6 +447,7 @@ bool WaylandBackend::start() {
 }
 
 void WaylandBackend::stop() {
+    _toplevels.stop();
     if (_grab) { zwp_input_method_keyboard_grab_v2_release(_grab); _grab = nullptr; }
     if (_im) { zwp_input_method_v2_destroy(_im); _im = nullptr; }
     if (_vk) { zwp_virtual_keyboard_v1_destroy(_vk); _vk = nullptr; }
