@@ -58,6 +58,20 @@ constexpr uint32_t kEvdevBackspace = 14;
 // Wayland gui keycode evdev; engine (platforms/linux.h) dung keycode X11.
 constexpr uint32_t kEvdevToX11 = 8;
 
+// Keycode X11 cua cac phim bo tro.
+bool isModifierKeycode(uint32_t keycode) {
+    switch (keycode) {
+        case 50: case 62:   // Shift
+        case 37: case 105:  // Control
+        case 64: case 108:  // Alt
+        case 133: case 134: // Super
+        case 66: case 77: case 78: // Caps/Num/Scroll Lock
+            return true;
+        default:
+            return false;
+    }
+}
+
 class WaylandBackend final : public IBackend {
 public:
     ~WaylandBackend() override { stop(); }
@@ -279,6 +293,8 @@ void WaylandBackend::onModifiers(void* data, zwp_input_method_keyboard_grab_v2*,
                                  uint32_t depressed, uint32_t latched, uint32_t locked,
                                  uint32_t group) {
     auto* self = static_cast<WaylandBackend*>(data);
+    OK_LOG("modifiers: depressed=0x%X latched=0x%X locked=0x%X group=%u", depressed,
+           latched, locked, group);
     if (self->_xkbState) {
         xkb_state_update_mask(self->_xkbState, depressed, latched, locked, 0, 0, group);
     }
@@ -412,6 +428,16 @@ void WaylandBackend::stop() {
 
 void WaylandBackend::forwardKey(const KeyEvent& ev) {
     if (!_vk) return;
+
+    // Khong gui keycode cua phim bo tro. Giao thuc virtual-keyboard co request
+    // `modifiers` rieng chinh vi compositor KHONG tu suy ra trang thai bo tro
+    // tu cac phim ta bom vao. Gui ca hai duong la dem hai lan, va trang thai
+    // Shift bi ket o trang thai dang giu — dung trieu chung da thay khi chay
+    // that: caps=1 dinh lien tuc qua hang loat phim khong lien quan.
+    if (isModifierKeycode(ev.keycode)) {
+        return;
+    }
+
     zwp_virtual_keyboard_v1_key(
         _vk, _lastTime, ev.keycode - kEvdevToX11,
         ev.pressed ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
@@ -501,29 +527,35 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
 
     OK_LOG("sendResult: xoa %u byte (%u phim) roi chen \"%s\" [%s]", del.utf8Bytes,
            del.keyPresses, utf8Encode(out).c_str(),
-           !_current.active        ? "ban-phim-ao"
-           : _current.hasSurroundingText ? "surrounding-text"
-                                         : "backspace-fallback");
+           (!_current.active || !_current.hasSurroundingText) ? "ban-phim-ao"
+                                                              : "surrounding-text");
 
-    if (!_current.active) {
-        // Khong co o nhap text-input-v3 nao: XWayland, Chrome, VS Code,
-        // phan lon terminal. commit_string se roi vao hu khong, nen phai
-        // go bang ban phim ao.
+    // NGUYEN TAC: khong bao gio tron hai co che trong cung mot lan xuat.
+    //
+    // Phim BackSpace ao di qua dinh tuyen ban phim, con commit_string di qua
+    // text-input. Khong co gi bao dam ung dung xu ly chung dung thu tu, va khi
+    // sai thu tu thi ra dung nhung loi da thay khi chay that: go "con"+f ra
+    // "conon" (xoa khong an) hoac go "nefu" ra "ieu" (xoa lo mat chu dau).
+    //
+    // Vi vay: co surrounding text thi ca xoa lan chen deu qua text-input;
+    // khong co thi ca hai deu qua ban phim ao.
+    if (!_current.active || !_current.hasSurroundingText) {
         if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
         typeViaVirtualKeyboard(out);
         flush();
         return;
     }
 
-    if (_current.hasSurroundingText) {
-        // Duong chinh: mot lan xoa gon gang, dem theo byte UTF-8.
-        if (del.utf8Bytes > 0) {
-            zwp_input_method_v2_delete_surrounding_text(_im, del.utf8Bytes, 0);
-        }
-    } else if (del.keyPresses > 0) {
-        // Ung dung noi text-input-v3 nhung khong gui surrounding text: dung
-        // ky thuat backspace nhu ban macOS va Windows.
-        sendBackspaces(del.keyPresses);
+    // Co o nhap text-input-v3 thi luon xoa bang delete_surrounding_text, ke ca
+    // khi ung dung khong gui surrounding_text ve. Su kien surrounding_text chi
+    // noi ung dung co BAO CAO noi dung hay khong, khong lien quan toi viec no
+    // co xu ly duoc yeu cau xoa hay khong.
+    //
+    // Truoc day o day ban phim BackSpace ao khi thieu surrounding_text. Cach do
+    // tron hai co che: phim BackSpace di qua dinh tuyen ban phim con commit_string
+    // di qua text-input, va khong co gi bao dam ung dung xu ly chung dung thu tu.
+    if (del.utf8Bytes > 0) {
+        zwp_input_method_v2_delete_surrounding_text(_im, del.utf8Bytes, 0);
     }
 
     if (!out.empty()) {
