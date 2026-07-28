@@ -35,3 +35,23 @@ include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+# ---------------------------------------------------------------------------
+# Cai dat
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+
+install(TARGETS openkey RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/openkey.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/openkey.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+
+# Unit systemd cho phien nguoi dung. Duong dan ExecStart phai khop voi noi
+# binary that su duoc cai, nen sinh lai tu CMAKE_INSTALL_PREFIX thay vi chep
+# nguyen file.
+set(OPENKEY_BIN ${CMAKE_INSTALL_FULL_BINDIR}/openkey)
+configure_file(packaging/openkey.service
+               ${CMAKE_CURRENT_BINARY_DIR}/openkey.service @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/openkey.service
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)

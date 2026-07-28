@@ -12,12 +12,20 @@ bằng `zwp_input_method_v2` rồi trả chữ về bằng `delete_surrounding_t
 | Giai đoạn | Nội dung | Trạng thái |
 | --- | --- | --- |
 | 1 | Gõ được trên Wayland (`zwp_input_method_v2`) | đang làm |
-| 2 | Bảng điều khiển Qt6 đầy đủ | chưa |
-| 3 | X11 và XWayland (Chrome, VS Code, Electron) | chưa |
+| 2 | Bảng điều khiển Qt6 đầy đủ | xong |
+| 3 | X11 và XWayland | không cần nữa, xem bên dưới |
 
-Hết giai đoạn 1, chỉ những ứng dụng nói `text-input-v3` mới gõ được: GTK4, GTK3
-với `GTK_IM_MODULE=wayland`, Qt6, Firefox. Chrome và các ứng dụng Electron phải
-đợi giai đoạn 3.
+Giai đoạn 3 ban đầu định viết một backend X11 riêng (XRecord + XTEST) để phủ
+Chrome, VS Code và các ứng dụng XWayland. Khi chạy thử mới thấy không cần: grab
+của OpenKey nhận được phím **kể cả** khi không có ô nhập `text-input-v3` nào,
+nên vấn đề chỉ nằm ở đầu ra. Vì vậy OpenKey xuất chữ theo hai đường:
+
+- Ứng dụng có gửi surrounding text → `delete_surrounding_text` + `commit_string`
+- Còn lại → bàn phím ảo với keymap sinh động (kỹ thuật của `wtype`)
+
+Nguyên tắc bắt buộc: **không bao giờ trộn hai cơ chế trong cùng một lần xuất**.
+Phím BackSpace ảo đi qua định tuyến bàn phím còn `commit_string` đi qua
+text-input, và không gì bảo đảm ứng dụng xử lý chúng đúng thứ tự.
 
 ## Build
 
@@ -50,6 +58,32 @@ tiến trình `fcitx5`, `fcitx`, `ibus-daemon` lúc khởi động và cảnh b�
 
 Đặt `OPENKEY_DEBUG=1` để xem nhật ký sự kiện: `activate`, `done`, từng phím nhận
 được và từng lần xoá/chèn.
+
+## Cài đặt
+
+```sh
+cmake -S Sources/OpenKey/linux -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build
+cmake --install build
+```
+
+Chạy cùng phiên đăng nhập. Unit systemd được cài vào `$PREFIX/lib/systemd/user`,
+đúng chỗ khi cài toàn hệ thống; với bản cài vào `~/.local` thì phải liên kết nó
+sang thư mục systemd đọc được:
+
+```sh
+mkdir -p ~/.config/systemd/user
+ln -sf ~/.local/lib/systemd/user/openkey.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now openkey.service
+```
+
+Nhớ tắt hẳn bộ gõ cũ, nếu không OpenKey sẽ không bao giờ được kích hoạt:
+
+```sh
+systemctl --user stop app-org.fcitx.Fcitx5@autostart.service
+mv ~/.config/autostart/org.fcitx.Fcitx5.desktop{,.disabled}
+```
 
 ## Cấu hình
 

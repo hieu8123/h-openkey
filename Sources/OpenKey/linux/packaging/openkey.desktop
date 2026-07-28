@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=OpenKey
+GenericName=Vietnamese Input Method
+GenericName[vi]=Bộ gõ tiếng Việt
+Comment=Open source Vietnamese input method
+Comment[vi]=Bộ gõ tiếng Việt nguồn mở
+Exec=openkey
+Icon=openkey
+Terminal=false
+Categories=Utility;
+Keywords=vietnamese;telex;vni;input;method;tiengviet;bogo;
+StartupNotify=false
