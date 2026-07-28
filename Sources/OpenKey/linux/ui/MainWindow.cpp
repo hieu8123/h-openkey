@@ -5,6 +5,7 @@
 
 #include "MainWindow.h"
 
+#include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -85,9 +86,19 @@ MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
     connect(defaults, &QPushButton::clicked, this, &MainWindow::restoreDefaults);
     connect(saveButton, &QPushButton::clicked, this, &MainWindow::save);
 
+    // Phai co duong thoat ngay trong cua so: menu chuot phai o khay he thong
+    // khong phai desktop nao cung ho tro, va nguoi dung can thoat duoc.
+    auto* quitButton = new QPushButton(tr("Thoát OpenKey"));
+    connect(quitButton, &QPushButton::clicked, this, &MainWindow::quitApplication);
+
+    auto* closeButton = new QPushButton(tr("Đóng"));
+    connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
+
     auto* bottom = new QHBoxLayout;
     bottom->addWidget(defaults);
+    bottom->addWidget(quitButton);
     bottom->addStretch(1);
+    bottom->addWidget(closeButton);
     bottom->addWidget(saveButton);
 
     auto* root = new QVBoxLayout(this);
@@ -383,6 +394,11 @@ void MainWindow::restoreDefaults() {
     _core.resetTypingState();
     refreshFromState();
     emit settingsChanged();
+}
+
+void MainWindow::quitApplication() {
+    _config.save();
+    QApplication::quit();
 }
 
 void MainWindow::save() {

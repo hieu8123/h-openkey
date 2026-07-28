@@ -25,12 +25,12 @@ trap cleanup EXIT
 
 uninstall() {
     say "Đang gỡ OpenKey"
-    systemctl --user disable --now openkey.service 2>/dev/null || true
-    rm -f "$UNIT_DIR/openkey.service"
-    rm -f "$PREFIX/bin/openkey"
-    rm -f "$PREFIX/share/applications/openkey.desktop"
-    rm -f "$PREFIX/share/icons/hicolor/scalable/apps/openkey.svg"
-    rm -f "$PREFIX/lib/systemd/user/openkey.service"
+    systemctl --user disable --now h-openkey.service 2>/dev/null || true
+    rm -f "$UNIT_DIR/h-openkey.service"
+    rm -f "$PREFIX/bin/h-openkey"
+    rm -f "$PREFIX/share/applications/h-openkey.desktop"
+    rm -f "$PREFIX/share/icons/hicolor/scalable/apps/h-openkey.svg"
+    rm -f "$PREFIX/lib/systemd/user/h-openkey.service"
     systemctl --user daemon-reload 2>/dev/null || true
     say "Đã gỡ. Cấu hình ở ~/.config/openkey vẫn được giữ."
     say "Bật lại bộ gõ cũ, ví dụ:  systemctl --user start app-org.fcitx.Fcitx5@autostart.service"
@@ -164,7 +164,7 @@ build_install() {
     cmake --install "$WORK/build" >/dev/null
 
     mkdir -p "$UNIT_DIR"
-    ln -sf "$PREFIX/lib/systemd/user/openkey.service" "$UNIT_DIR/openkey.service"
+    ln -sf "$PREFIX/lib/systemd/user/h-openkey.service" "$UNIT_DIR/h-openkey.service"
     systemctl --user daemon-reload
 }
 
@@ -218,15 +218,15 @@ main() {
     fi
 
     say "Bật chạy cùng phiên đăng nhập"
-    systemctl --user enable --now openkey.service
+    systemctl --user enable --now h-openkey.service
 
     sleep 2
-    if systemctl --user is-active --quiet openkey.service; then
+    if systemctl --user is-active --quiet h-openkey.service; then
         say "Xong. OpenKey đang chạy, biểu tượng \"V\" ở khay hệ thống."
         say "Chuột phải vào biểu tượng để mở bảng điều khiển."
     else
         warn "Cài xong nhưng service chưa chạy. Xem lý do bằng:"
-        warn "  journalctl --user -u openkey.service -n 40"
+        warn "  journalctl --user -u h-openkey.service -n 40"
     fi
 }
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenKey — bộ gõ tiếng Việt
+Description=H-OpenKey — bộ gõ tiếng Việt
 Documentation=https://github.com/tuyenvm/OpenKey
 # Chi co nghia trong phien do hoa: OpenKey can Wayland hoac X11 de bat ban phim.
 PartOf=graphical-session.target

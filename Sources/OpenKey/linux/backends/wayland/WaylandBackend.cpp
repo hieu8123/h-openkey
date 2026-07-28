@@ -179,22 +179,6 @@ private:
     // focus dau tien, nen phai grab lai moi lan input method duoc kich hoat.
     bool _grabbedWhileActive = false;
 
-    // Mot so ung dung (cosmic-term) BAO CAO surrounding text nhung lai BO QUA
-    // delete_surrounding_text. Khong co cach nao biet truoc qua giao thuc, nen
-    // ta tu do: sau moi lan xoa, doi chieu do dai ung dung bao ve voi do dai
-    // dang ra phai co. Lech dung bang phan dang ra bi xoa thi ket luan ung dung
-    // bo qua, va tu do chuyen sang dung phim BackSpace that.
-    size_t _beforeCursorBytes = 0;
-    bool _checkPending = false;
-    size_t _expectedIfHonored = 0;
-    size_t _expectedIfIgnored = 0;
-    bool _deleteIgnored = false;
-
-    // Ket luan duoc ghi nho theo tung ung dung. Truoc day no bi dat lai o moi
-    // su kien `activate`, ma `activate` no lien tuc khi focus nhay qua lai —
-    // moi lan dat lai la phai hi sinh them mot chu bi nhan doi de do lai.
-    std::map<std::string, bool> _deleteIgnoredByApp;
-
     uint32_t _serial = 0; // so su kien `done` da nhan, dung cho commit()
     uint32_t _lastTime = 0;
 
@@ -242,7 +226,6 @@ void WaylandBackend::onActivate(void* data, zwp_input_method_v2*) {
     auto* self = static_cast<WaylandBackend*>(data);
     OK_LOG("activate");
     self->_pending.active = true;
-    self->_checkPending = false;
     // Moi lan focus vao o nhap moi, phai gia dinh la khong co surrounding text
     // cho toi khi su kien tuong ung toi truoc `done`.
     self->_pending.hasSurroundingText = false;
@@ -267,19 +250,7 @@ void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*,
     OK_LOG("surrounding_text: truoc con tro=\"%s\" (%zu byte)",
            all.substr(from, at - from).c_str(), at);
 
-    if (self->_checkPending) {
-        self->_checkPending = false;
-        if (at == self->_expectedIfIgnored && at != self->_expectedIfHonored) {
-            self->_deleteIgnored = true;
-            self->_deleteIgnoredByApp[self->_appId] = true;
-            OK_LOG("\"%s\" bo qua delete_surrounding_text, chuyen sang BackSpace that",
-                   self->_appId.c_str());
-        } else if (at == self->_expectedIfHonored) {
-            self->_deleteIgnoredByApp[self->_appId] = false;
-            OK_LOG("\"%s\" xu ly duoc delete_surrounding_text", self->_appId.c_str());
-        }
-    }
-    self->_beforeCursorBytes = at;
+
 }
 
 void WaylandBackend::regrabKeyboard() {
@@ -493,9 +464,6 @@ bool WaylandBackend::start() {
     // duoc kich hoat. Thieu thi bo qua, phan con lai van chay binh thuong.
     _toplevels.onFocusChanged = [this](const std::string& appId) {
         _appId = appId;
-        auto known = _deleteIgnoredByApp.find(appId);
-        _deleteIgnored = known != _deleteIgnoredByApp.end() && known->second;
-        _checkPending = false;
         OK_LOG("focus doi sang: %s", appId.c_str());
         if (_focusHandler) {
             _focusHandler(appId);
@@ -609,9 +577,7 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
 
     OK_LOG("sendResult: xoa %u byte (%u phim) roi chen \"%s\" [%s]", del.utf8Bytes,
            del.keyPresses, utf8Encode(out).c_str(),
-           !_current.active ? "ban-phim-ao"
-           : (!_current.hasSurroundingText || _deleteIgnored) ? "backspace+commit"
-                                                             : "text-input");
+           !_current.active ? "ban-phim-ao" : "backspace+commit");
 
     // NGUYEN TAC: khong bao gio tron hai co che trong cung mot lan xuat.
     //
@@ -623,8 +589,7 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
     // Vi vay: co surrounding text thi ca xoa lan chen deu qua text-input;
     // khong co thi ca hai deu qua ban phim ao.
     // Khong co o nhap text-input-v3 nao (XWayland: Chrome, VS Code). Chi con
-    // duong ban phim ao, va duong nay chi chay duoc neu compositor thuc su ap
-    // dung keymap cua ban phim ao cho ung dung — dieu chua duoc xac nhan.
+    // duong ban phim ao.
     if (!_current.active) {
         if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
         typeViaVirtualKeyboard(out);
@@ -632,40 +597,21 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
         return;
     }
 
-    // Co text-input nhung khong gui surrounding_text: terminal. Terminal khong
-    // so huu van ban — bo soan dong cua shell moi so huu — nen no bo qua
-    // delete_surrounding_text, chi phim BackSpace that moi xoa duoc. Nhung chen
-    // chu thi commit_string van hoat dong.
+    // Xoa bang phim BackSpace that, cho MOI ung dung.
     //
-    // Hai duong khac nhau nhung deu di tren MOT ket noi cua chung ta va duoc
-    // compositor chuyen tiep theo dung thu tu, nen ung dung nao xu ly hang doi
-    // su kien tuan tu se thay BackSpace truoc roi moi thay chu.
-    if (!_current.hasSurroundingText || _deleteIgnored) {
-        if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
-        if (!out.empty()) {
-            zwp_input_method_v2_commit_string(_im, utf8Encode(out).c_str());
-        }
-        zwp_input_method_v2_commit(_im, _serial);
-        flush();
-        return;
+    // Truoc day o day dung delete_surrounding_text khi ung dung co ve ho tro,
+    // roi them ca mot co che tu do de biet ung dung nao that su xu ly. Ca hai
+    // deu sai huong: cosmic-term BAO CAO surrounding text nhung BO QUA yeu cau
+    // xoa (hop ly — bo soan dong cua shell moi so huu van ban), va phep do thi
+    // gan vao app-id, ma app-id bao ve khong luon khop voi ung dung dang thuc
+    // su nhan chu.
+    //
+    // Phim BackSpace that thi chay o moi noi: terminal buoc phai dung no, con
+    // Firefox va editor cung nhan no binh thuong. delete_surrounding_text chi
+    // gon hon ve hinh thuc chu khong doi lay duoc gi.
+    if (del.keyPresses > 0) {
+        sendBackspaces(del.keyPresses);
     }
-
-    // Co o nhap text-input-v3 thi luon xoa bang delete_surrounding_text, ke ca
-    // khi ung dung khong gui surrounding_text ve: su kien do chi noi ung dung
-    // co BAO CAO noi dung hay khong, khong lien quan toi viec no co xu ly duoc
-    // yeu cau xoa hay khong.
-    if (del.utf8Bytes > 0) {
-        zwp_input_method_v2_delete_surrounding_text(_im, del.utf8Bytes, 0);
-
-        // Chuan bi doi chieu o su kien surrounding_text ke tiep.
-        const size_t inserted = utf8Encode(out).size();
-        _checkPending = true;
-        _expectedIfHonored = _beforeCursorBytes >= del.utf8Bytes
-                                 ? _beforeCursorBytes - del.utf8Bytes + inserted
-                                 : inserted;
-        _expectedIfIgnored = _beforeCursorBytes + inserted;
-    }
-
     if (!out.empty()) {
         zwp_input_method_v2_commit_string(_im, utf8Encode(out).c_str());
     }

@@ -52,7 +52,7 @@ khác trước:
 
 ```sh
 systemctl --user stop app-org.fcitx.Fcitx5@autostart.service   # hoặc ibus exit
-./build/ui/openkey
+./build/ui/h-openkey
 ```
 
 Lưu ý về cosmic-comp: khi đã có bộ gõ khác giữ chỗ, nó **không** gửi sự kiện
@@ -90,9 +90,9 @@ sang thư mục systemd đọc được:
 
 ```sh
 mkdir -p ~/.config/systemd/user
-ln -sf ~/.local/lib/systemd/user/openkey.service ~/.config/systemd/user/
+ln -sf ~/.local/lib/systemd/user/h-openkey.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now openkey.service
+systemctl --user enable --now h-openkey.service
 ```
 
 Nhớ tắt hẳn bộ gõ cũ, nếu không OpenKey sẽ không bao giờ được kích hoạt:

@@ -18,6 +18,7 @@
 #include "Config.h"
 #include "OpenKeyCore.h"
 #include "MainWindow.h"
+#include "SingleInstance.h"
 #include "TrayIcon.h"
 
 namespace {
@@ -53,6 +54,19 @@ int main(int argc, char** argv) {
     QApplication::setOrganizationName("OpenKey");
     // Dong cua so cuoi cung khong duoc thoat ung dung: OpenKey song o khay.
     QApplication::setQuitOnLastWindowClosed(false);
+
+    // Chan ban thu hai TRUOC KHI lam bat cu viec gi khac. Chay hai ban cung luc
+    // la loi nang: ca hai deu bat phim va deu gui chu, nen chu bi nhan doi.
+    openkey::SingleInstance instance;
+    if (instance.notifyRunningInstance()) {
+        std::printf("OpenKey đã chạy rồi, đang mở bảng điều khiển của bản đó.\n");
+        return 0;
+    }
+    if (!instance.claim()) {
+        std::fprintf(stderr,
+                     "OpenKey: không giành được ổ cắm một-bản-duy-nhất, "
+                     "vẫn chạy nhưng không chặn được bản thứ hai\n");
+    }
 
     openkey::Config config;
     config.load();
@@ -107,12 +121,18 @@ int main(int argc, char** argv) {
     openkey::MainWindow window(config, core);
     window.resize(680, 520);
 
-    QObject::connect(&tray, &openkey::TrayIcon::controlPanelRequested, &app, [&] {
+    auto showPanel = [&] {
         window.refreshFromState();
         window.show();
         window.raise();
         window.activateWindow();
-    });
+    };
+    QObject::connect(&tray, &openkey::TrayIcon::controlPanelRequested, &app, showPanel);
+
+    // Mo lai ung dung tu menu se hien bang dieu khien. Day la duong chac chan
+    // nhat: menu chuot phai o khay he thong khong phai desktop nao cung ho tro.
+    QObject::connect(&instance, &openkey::SingleInstance::showControlPanelRequested,
+                     &app, showPanel);
 
     // Khi cua so cua chinh OpenKey dang nhan focus thi ngung xu ly phim, neu
     // khong go vao chinh no se tao vong lap phan hoi.

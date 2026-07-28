@@ -60,6 +60,7 @@ private:
     void applyToEngine();
     void restoreDefaults();
     void save();
+    void quitApplication();
 
     Config& _config;
     OpenKeyCore& _core;
