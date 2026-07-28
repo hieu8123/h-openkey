@@ -37,6 +37,11 @@ public:
     // Nap lai gia tri tu cac bien engine len giao dien.
     void refreshFromState();
 
+protected:
+    // Dong cua so chi an di. Ung dung chi thoat khi bam nut Thoat, vi no la bo
+    // go — dong bang dieu khien khong co nghia la thoi go tieng Viet.
+    void closeEvent(QCloseEvent* event) override;
+
 signals:
     void settingsChanged();
 

@@ -45,7 +45,11 @@ include(GNUInstallDirs)
 install(TARGETS h-openkey RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES packaging/h-openkey.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# Ba icon: mot cho ung dung, hai cho hai trang thai o khay he thong. Phai cai
+# vao icon theme vi nhieu applet khay chi doc IconName chu bo qua IconPixmap.
 install(FILES packaging/h-openkey.svg
+              packaging/h-openkey-vi.svg
+              packaging/h-openkey-en.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 
 # Unit systemd cho phien nguoi dung. Duong dan ExecStart phai khop voi noi

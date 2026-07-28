@@ -7,6 +7,7 @@
 
 #include <QApplication>
 #include <QButtonGroup>
+#include <QCloseEvent>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QGridLayout>
@@ -394,6 +395,11 @@ void MainWindow::restoreDefaults() {
     _core.resetTypingState();
     refreshFromState();
     emit settingsChanged();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    event->ignore();
+    hide();
 }
 
 void MainWindow::quitApplication() {

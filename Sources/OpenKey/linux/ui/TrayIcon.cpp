@@ -44,6 +44,14 @@ const Choice kCodeTables[] = {
 };
 
 QIcon makeIcon(bool vietnamese) {
+    // Uu tien icon trong theme: applet khay cua nhieu desktop (COSMIC la mot)
+    // chi doc thuoc tinh IconName chu bo qua IconPixmap, nen neu chi dua pixmap
+    // thi bieu tuong hien ra ma khong dung.
+    const QString name = vietnamese ? "h-openkey-vi" : "h-openkey-en";
+    if (QIcon::hasThemeIcon(name)) {
+        return QIcon::fromTheme(name);
+    }
+
     // Ve chu thay vi dung file anh: bieu tuong noi luon trang thai dang go, va
     // khong phai keo theo tai nguyen nao.
     QPixmap pixmap(64, 64);
