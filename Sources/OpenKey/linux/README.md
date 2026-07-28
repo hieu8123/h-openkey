@@ -63,7 +63,20 @@ tiến trình `fcitx5`, `fcitx`, `ibus-daemon` lúc khởi động và cảnh b�
 Đặt `OPENKEY_DEBUG=1` để xem nhật ký sự kiện: `activate`, `done`, từng phím nhận
 được và từng lần xoá/chèn.
 
-## Cài đặt
+## Cài đặt bằng một lệnh
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
+```
+
+Script tự cài phụ thuộc theo distro (apt, dnf, pacman, zypper), tải mã nguồn từ
+bản phát hành mới nhất, build, **chạy kiểm thử trước khi cài**, dựng systemd user
+service, và hỏi trước khi tắt bộ gõ cũ. Gỡ ra bằng `bash install.sh --uninstall`.
+
+Vì sao build tại máy thay vì tải binary sẵn: bản binary phụ thuộc phiên bản Qt6
+của máy build, nên hay vỡ khi đem sang distro khác.
+
+## Cài đặt thủ công
 
 ```sh
 cmake -S Sources/OpenKey/linux -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local

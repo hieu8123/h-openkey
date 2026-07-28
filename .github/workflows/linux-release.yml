@@ -1,0 +1,59 @@
+name: Linux release
+
+on:
+  push:
+    tags: ["linux-v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài phụ thuộc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ pkg-config \
+            qt6-base-dev \
+            libwayland-dev wayland-protocols \
+            libxkbcommon-dev \
+            libx11-dev libxtst-dev
+
+      - name: Build
+        run: |
+          cmake -S Sources/OpenKey/linux -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build --parallel
+
+      - name: Chạy kiểm thử
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Đóng gói
+        run: |
+          # Gói mã nguồn: script cài đặt build tại máy người dùng, nên khong
+          # phu thuoc phien ban Qt6 cua may build.
+          version="${GITHUB_REF_NAME#linux-v}"
+          [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
+          name="openkey-linux-${version}"
+          mkdir -p "dist/${name}"
+          cp -r Sources/OpenKey/engine Sources/OpenKey/linux "dist/${name}/"
+          cp LICENSE "dist/${name}/"
+          tar -C dist -czf "${name}-src.tar.gz" "${name}"
+
+          # Gói binary sẵn cho Ubuntu 24.04, đường nhanh khi ABI Qt6 khớp.
+          DESTDIR="$PWD/dist/bin-root" cmake --install build
+          tar -C dist/bin-root -czf "${name}-ubuntu24.04-x86_64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openkey-linux
+          path: "*.tar.gz"
+
+      - name: Gắn vào bản phát hành
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.tar.gz"
