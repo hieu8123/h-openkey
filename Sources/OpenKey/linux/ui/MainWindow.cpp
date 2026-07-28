@@ -73,7 +73,7 @@ void selectValue(QComboBox* box, int value) {
 
 MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
     : QWidget(parent), _config(config), _core(core) {
-    setWindowTitle(tr("OpenKey"));
+    setWindowTitle(tr("H-OpenKey — bộ gõ tiếng Việt"));
 
     auto* tabs = new QTabWidget(this);
     tabs->addTab(buildBasicTab(), tr("Cơ bản"));
@@ -88,7 +88,7 @@ MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
 
     // Phai co duong thoat ngay trong cua so: menu chuot phai o khay he thong
     // khong phai desktop nao cung ho tro, va nguoi dung can thoat duoc.
-    auto* quitButton = new QPushButton(tr("Thoát OpenKey"));
+    auto* quitButton = new QPushButton(tr("Thoát H-OpenKey"));
     connect(quitButton, &QPushButton::clicked, this, &MainWindow::quitApplication);
 
     auto* closeButton = new QPushButton(tr("Đóng"));
@@ -102,6 +102,8 @@ MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
     bottom->addWidget(saveButton);
 
     auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(16, 16, 16, 16);
+    root->setSpacing(14);
     root->addWidget(buildControlGroup());
     root->addWidget(tabs, 1);
     root->addLayout(bottom);
@@ -112,6 +114,8 @@ MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
 QWidget* MainWindow::buildControlGroup() {
     auto* group = new QGroupBox(tr("Điều khiển"), this);
     auto* grid = new QGridLayout(group);
+    grid->setHorizontalSpacing(12);
+    grid->setVerticalSpacing(10);
 
     _codeTable = new QComboBox(group);
     fill(_codeTable, kCodeTables, std::size(kCodeTables));
@@ -217,30 +221,26 @@ QWidget* MainWindow::buildBasicTab() {
     addCheck(grid, row++, 1, tr("Sửa lỗi gợi ý của trình duyệt"), &vFixRecommendBrowser);
 
     addCheck(grid, row, 0, tr("Tạm tắt kiểm tra chính tả bằng Ctrl"), &vTempOffSpelling);
-    addCheck(grid, row++, 1, tr("Tạm tắt OpenKey bằng Alt"), &vTempOffOpenKey);
+    addCheck(grid, row++, 1, tr("Tạm tắt bộ gõ bằng Alt"), &vTempOffOpenKey);
 
     outer->addLayout(grid);
 
-    auto* macroGroup = new QGroupBox(page);
-    auto* macroRow = new QHBoxLayout(macroGroup);
-    auto* macroGrid = new QGridLayout;
-    addCheck(macroGrid, 0, 0, tr("Cho phép gõ tắt"), &vUseMacro);
-    macroRow->addLayout(macroGrid);
+    auto* macroGroup = new QGroupBox(tr("Gõ tắt"), page);
+    auto* macroGrid = new QGridLayout(macroGroup);
 
-    auto* macroButton = new QPushButton(tr("Bảng gõ tắt"), macroGroup);
+    addCheck(macroGrid, 0, 0, tr("Cho phép gõ tắt"), &vUseMacro);
+    addCheck(macroGrid, 1, 0, tr("Vẫn gõ tắt khi ở chế độ tiếng Anh"),
+             &vUseMacroInEnglishMode);
+    addCheck(macroGrid, 2, 0, tr("Tự viết hoa theo cách gõ (btw → By the way)"),
+             &vAutoCapsMacro);
+
+    auto* macroButton = new QPushButton(tr("Mở bảng gõ tắt"), macroGroup);
     connect(macroButton, &QPushButton::clicked, this, [this] {
         MacroDialog dialog(_config, this);
         dialog.exec();
     });
-    macroRow->addWidget(macroButton);
-
-    auto* macroGrid2 = new QGridLayout;
-    addCheck(macroGrid2, 0, 0, tr("Vẫn gõ tắt khi ở chế độ tiếng Anh"),
-             &vUseMacroInEnglishMode);
-    addCheck(macroGrid2, 1, 0, tr("Tự viết hoa theo cách gõ (btw → By the way)"),
-             &vAutoCapsMacro);
-    macroRow->addLayout(macroGrid2);
-    macroRow->addStretch(1);
+    macroGrid->addWidget(macroButton, 0, 1, 3, 1, Qt::AlignRight | Qt::AlignVCenter);
+    macroGrid->setColumnStretch(0, 1);
 
     outer->addWidget(macroGroup);
     outer->addStretch(1);

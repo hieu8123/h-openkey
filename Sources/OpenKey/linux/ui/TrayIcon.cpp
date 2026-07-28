@@ -130,7 +130,7 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
     connect(_menu->addAction(tr("Thoát")), &QAction::triggered, qApp, &QApplication::quit);
 
     _tray.setContextMenu(_menu);
-    _tray.setToolTip(tr("OpenKey"));
+    _tray.setToolTip(tr("H-OpenKey"));
     connect(&_tray, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
                 if (reason == QSystemTrayIcon::Trigger) {

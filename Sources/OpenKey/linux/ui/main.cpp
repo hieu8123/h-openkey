@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QSystemTrayIcon>
 #include <QWindow>
 
@@ -13,12 +14,14 @@
 #include <QFile>
 
 #include <cstdio>
+#include <cstdlib>
 
 #include "Backend.h"
 #include "Config.h"
 #include "OpenKeyCore.h"
 #include "MainWindow.h"
 #include "SingleInstance.h"
+#include "Theme.h"
 #include "TrayIcon.h"
 
 namespace {
@@ -50,8 +53,11 @@ QString conflictingInputMethod() {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    QApplication::setApplicationName("OpenKey");
+    QApplication::setApplicationName("H-OpenKey");
+    QApplication::setApplicationDisplayName("H-OpenKey");
     QApplication::setOrganizationName("OpenKey");
+    QApplication::setDesktopFileName("h-openkey");
+    openkey::applyTheme(app);
     // Dong cua so cuoi cung khong duoc thoat ung dung: OpenKey song o khay.
     QApplication::setQuitOnLastWindowClosed(false);
 
@@ -77,7 +83,7 @@ int main(int argc, char** argv) {
     auto backend = openkey::createBackend(config.backend, error);
     if (!backend) {
         std::fprintf(stderr, "OpenKey: %s\n", error.c_str());
-        QMessageBox::critical(nullptr, "OpenKey",
+        QMessageBox::critical(nullptr, "H-OpenKey",
                               QString::fromStdString("Không khởi động được:\n\n" + error));
         return 1;
     }
@@ -85,7 +91,7 @@ int main(int argc, char** argv) {
     if (!backend->start()) {
         const std::string reason = backend->lastError();
         std::fprintf(stderr, "OpenKey: %s\n", reason.c_str());
-        QMessageBox::critical(nullptr, "OpenKey",
+        QMessageBox::critical(nullptr, "H-OpenKey",
                               QString::fromStdString("Không khởi động được:\n\n" + reason));
         return 1;
     }
@@ -103,7 +109,7 @@ int main(int argc, char** argv) {
                     "bạn tắt hẳn %1 rồi mở lại OpenKey.")
                 .arg(other);
         std::fprintf(stderr, "OpenKey: %s\n", message.toUtf8().constData());
-        QMessageBox::warning(nullptr, "OpenKey", message);
+        QMessageBox::warning(nullptr, "H-OpenKey", message);
     }
 
     // Gan file descriptor cua backend vao vong lap su kien cua Qt. Nho vay chi
@@ -146,6 +152,17 @@ int main(int argc, char** argv) {
     } else {
         std::fprintf(stderr,
                      "OpenKey: khong co khay he thong, van chay nhung khong co bieu tuong\n");
+    }
+
+    // Dung khi lam giao dien: tu chup cua so ra tep roi thoat, de doi chieu
+    // thiet ke ma khong can cong cu chup anh cua desktop.
+    if (const char* shot = std::getenv("OPENKEY_SCREENSHOT")) {
+        const QString path = QString::fromUtf8(shot);
+        showPanel();
+        QTimer::singleShot(900, &app, [&window, path] {
+            window.grab().save(path);
+            QApplication::quit();
+        });
     }
 
     backend->flush();

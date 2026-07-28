@@ -7,6 +7,7 @@ add_executable(h-openkey
     ConvertToolDialog.cpp
     MacroDialog.cpp
     SingleInstance.cpp
+    Theme.cpp
     MainWindow.cpp
     TrayIcon.cpp
 )
