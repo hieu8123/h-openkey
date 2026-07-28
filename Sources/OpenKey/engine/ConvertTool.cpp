@@ -11,6 +11,7 @@
 #include "Engine.h"
 #include <iostream>
 #include <memory.h>
+#include <algorithm> //std::find; libstdc++ khong include gian tiep nhu libc++/MSVC
 
 //option
 bool convertToolDontAlertWhenCompleted = false;
