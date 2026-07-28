@@ -1,6 +1,13 @@
-# OpenKey cho Linux
+# H-OpenKey — OpenKey cho Linux
 
-Bộ gõ tiếng Việt nguồn mở cho Linux, dùng chung engine với bản macOS và Windows.
+Bộ gõ tiếng Việt cho Linux.
+
+Đây là bản **fork** của [OpenKey](https://github.com/tuyenvm/OpenKey) của Tuyên Mai,
+làm ra **chỉ để hỗ trợ người dùng Linux**. Công lao thiết kế bộ gõ và toàn bộ
+engine xử lý tiếng Việt thuộc về dự án gốc; phần Linux dùng **chung một engine
+không sửa đổi** với bản macOS và Windows, nên cách gõ giống hệt.
+
+Bản Linux có tên `h-openkey` để không lẫn với bản gốc.
 
 OpenKey **không** chạy trên ibus hay fcitx5. Nó tự làm input method: bắt bàn phím
 bằng `zwp_input_method_v2` rồi trả chữ về bằng `delete_surrounding_text` +

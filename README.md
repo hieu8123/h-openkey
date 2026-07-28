@@ -1,4 +1,27 @@
 
+# H-OpenKey — bản fork của OpenKey, làm cho người dùng Linux
+
+Đây là **bản fork** của [OpenKey](https://github.com/tuyenvm/OpenKey) của Tuyên Mai.
+Toàn bộ công lao thiết kế bộ gõ và engine xử lý tiếng Việt thuộc về dự án gốc;
+bản fork này **chỉ thêm phần hỗ trợ Linux**.
+
+Bản gốc hỗ trợ macOS và Windows. Bản fork này thêm Linux, dùng **chung một engine
+không sửa đổi** với hai nền tảng kia — nên cách gõ, kiểu gõ và bảng mã giống hệt.
+
+- **Hướng dẫn cho Linux: [`Sources/OpenKey/linux/README.md`](Sources/OpenKey/linux/README.md)**
+- Cài bằng một lệnh:
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
+  ```
+
+Bản Linux có tên `h-openkey` để không lẫn với bản gốc nếu bạn dùng cả hai.
+
+Phần macOS và Windows bên dưới giữ nguyên của dự án gốc, bản fork này không đụng
+tới — trừ đúng một dòng `#include <algorithm>` trong `ConvertTool.cpp` mà libstdc++
+cần để biên dịch được.
+
+---
+
 # [OpenKey](http://open-key.org)
 ### [Download bản mới nhất](https://github.com/tuyenvm/OpenKey/releases)
 [![GitHub release](https://img.shields.io/github/v/release/tuyenvm/OpenKey.svg)](https://github.com/tuyenvm/OpenKey/releases/latest)
