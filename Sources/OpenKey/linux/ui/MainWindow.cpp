@@ -117,8 +117,9 @@ QWidget* MainWindow::buildControlGroup() {
     _backendAuto = new QRadioButton(tr("Tự động"), group);
     _backendWayland = new QRadioButton(tr("Wayland"), group);
     _backendX11 = new QRadioButton(tr("X11"), group);
-    _backendX11->setEnabled(false);
-    _backendX11->setToolTip(tr("Chưa có trong bản này"));
+    _backendX11->setToolTip(
+        tr("Dùng cho phiên đăng nhập X11. Trên X11 không chặn được phím nên "
+           "chữ có thể nhấp nháy nhẹ."));
 
     auto* backendRow = new QHBoxLayout;
     backendRow->addWidget(_backendAuto);

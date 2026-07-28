@@ -29,6 +29,7 @@ set_target_properties(openkey_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(core)
 add_subdirectory(backends/wayland)
+add_subdirectory(backends/x11)
 add_subdirectory(ui)
 
 include(CTest)
