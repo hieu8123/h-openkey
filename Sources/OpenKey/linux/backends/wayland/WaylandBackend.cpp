@@ -31,6 +31,7 @@
 #include "ToplevelWatcher.h"
 #include "cosmic-toplevel-info-unstable-v1-client-protocol.h"
 #include "ext-foreign-toplevel-list-v1-client-protocol.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
 
@@ -152,6 +153,7 @@ private:
     zwp_input_method_keyboard_grab_v2* _grab = nullptr;
     ext_foreign_toplevel_list_v1* _toplevelList = nullptr;
     zcosmic_toplevel_info_v1* _toplevelInfo = nullptr;
+    zwlr_foreign_toplevel_manager_v1* _wlrToplevels = nullptr;
     ToplevelWatcher _toplevels;
 
     // Mot ban phim ao duy nhat, keymap ghep san va nap mot lan: vua chuyen tiep
@@ -224,6 +226,10 @@ void WaylandBackend::onGlobal(void* data, wl_registry* r, uint32_t id, const cha
             self->_toplevelInfo = static_cast<zcosmic_toplevel_info_v1*>(
                 wl_registry_bind(r, id, &zcosmic_toplevel_info_v1_interface, v));
         }
+    } else if (std::strcmp(iface, zwlr_foreign_toplevel_manager_v1_interface.name) == 0) {
+        const uint32_t v = version < 3 ? version : 3;
+        self->_wlrToplevels = static_cast<zwlr_foreign_toplevel_manager_v1*>(
+            wl_registry_bind(r, id, &zwlr_foreign_toplevel_manager_v1_interface, v));
     } else if (std::strcmp(iface, zwp_virtual_keyboard_manager_v1_interface.name) == 0) {
         self->_vkManager = static_cast<zwp_virtual_keyboard_manager_v1*>(
             wl_registry_bind(r, id, &zwp_virtual_keyboard_manager_v1_interface, 1));
@@ -495,8 +501,10 @@ bool WaylandBackend::start() {
             _focusHandler(appId);
         }
     };
-    _caps.hasAppId = _toplevels.start(_toplevelList, _toplevelInfo);
-    if (!_caps.hasAppId) {
+    _caps.hasAppId = _toplevels.start(_toplevelList, _toplevelInfo, _wlrToplevels);
+    if (_caps.hasAppId) {
+        OK_LOG("theo doi cua so dang focus qua %s", _toplevels.mode());
+    } else {
         OK_LOG("khong theo doi duoc cua so dang focus, tat Smart Switch Key");
     }
 

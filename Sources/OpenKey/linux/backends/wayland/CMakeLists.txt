@@ -15,7 +15,8 @@ set(PROTO_HEADERS "")
 # sinh lai luc build de luon khop voi libwayland tren may.
 foreach(proto input-method-unstable-v2 virtual-keyboard-unstable-v1
              ext-foreign-toplevel-list-v1 cosmic-toplevel-info-unstable-v1
-             ext-workspace-v1 cosmic-workspace-unstable-v1)
+             ext-workspace-v1 cosmic-workspace-unstable-v1
+             wlr-foreign-toplevel-management-unstable-v1)
     set(xml ${PROTO_DIR}/${proto}.xml)
     set(hdr ${GEN_DIR}/${proto}-client-protocol.h)
     set(src ${GEN_DIR}/${proto}-protocol.c)

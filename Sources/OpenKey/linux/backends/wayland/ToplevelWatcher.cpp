@@ -9,6 +9,7 @@
 
 #include "cosmic-toplevel-info-unstable-v1-client-protocol.h"
 #include "ext-foreign-toplevel-list-v1-client-protocol.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 
 namespace openkey {
 namespace {
@@ -20,17 +21,100 @@ ToplevelWatcher* watcherOf(void* data) { return static_cast<ToplevelWatcher*>(da
 ToplevelWatcher::~ToplevelWatcher() { stop(); }
 
 bool ToplevelWatcher::start(ext_foreign_toplevel_list_v1* list,
-                            zcosmic_toplevel_info_v1* info) {
-    if (!list || !info) {
-        return false;
+                            zcosmic_toplevel_info_v1* info,
+                            zwlr_foreign_toplevel_manager_v1* wlr) {
+    // Uu tien duong wlr: mot giao thuc la du, va no pho bien hon.
+    if (wlr) {
+        _wlr = wlr;
+        static const zwlr_foreign_toplevel_manager_v1_listener managerListener = {
+            onWlrToplevel,
+            /* finished */ [](void*, zwlr_foreign_toplevel_manager_v1*) {},
+        };
+        zwlr_foreign_toplevel_manager_v1_add_listener(_wlr, &managerListener, this);
+        _mode = "wlr-foreign-toplevel";
+        return true;
     }
-    _list = list;
-    _info = info;
 
-    static const ext_foreign_toplevel_list_v1_listener listener = {onToplevel,
-                                                                   onListFinished};
-    ext_foreign_toplevel_list_v1_add_listener(_list, &listener, this);
-    return true;
+    if (list && info) {
+        _list = list;
+        _info = info;
+        static const ext_foreign_toplevel_list_v1_listener listener = {onToplevel,
+                                                                      onListFinished};
+        ext_foreign_toplevel_list_v1_add_listener(_list, &listener, this);
+        _mode = "ext-foreign-toplevel + cosmic-toplevel-info";
+        return true;
+    }
+
+    return false;
+}
+
+void ToplevelWatcher::onWlrToplevel(void* data, zwlr_foreign_toplevel_manager_v1*,
+                                    zwlr_foreign_toplevel_handle_v1* handle) {
+    auto* self = watcherOf(data);
+    static const zwlr_foreign_toplevel_handle_v1_listener listener = {
+        /* title */ [](void*, zwlr_foreign_toplevel_handle_v1*, const char*) {},
+        onWlrAppId,
+        /* output_enter */ [](void*, zwlr_foreign_toplevel_handle_v1*, wl_output*) {},
+        /* output_leave */ [](void*, zwlr_foreign_toplevel_handle_v1*, wl_output*) {},
+        onWlrState,
+        /* done */ [](void*, zwlr_foreign_toplevel_handle_v1*) {},
+        onWlrClosed,
+        /* parent */
+        [](void*, zwlr_foreign_toplevel_handle_v1*, zwlr_foreign_toplevel_handle_v1*) {},
+    };
+    zwlr_foreign_toplevel_handle_v1_add_listener(handle, &listener, data);
+    self->_wlrToplevels.emplace(handle, WlrToplevel{});
+}
+
+void ToplevelWatcher::onWlrAppId(void* data, zwlr_foreign_toplevel_handle_v1* handle,
+                                 const char* appId) {
+    auto* self = watcherOf(data);
+    auto it = self->_wlrToplevels.find(handle);
+    if (it == self->_wlrToplevels.end()) {
+        return;
+    }
+    it->second.appId = appId ? appId : "";
+    // app-id thuong toi sau su kien state, nen phai bao lai o day.
+    if (it->second.activated) {
+        self->publishFocus(it->second.appId);
+    }
+}
+
+void ToplevelWatcher::onWlrState(void* data, zwlr_foreign_toplevel_handle_v1* handle,
+                                 wl_array* state) {
+    auto* self = watcherOf(data);
+    auto it = self->_wlrToplevels.find(handle);
+    if (it == self->_wlrToplevels.end()) {
+        return;
+    }
+
+    bool activated = false;
+    const uint32_t* values = static_cast<const uint32_t*>(state->data);
+    for (size_t i = 0; i < state->size / sizeof(uint32_t); i++) {
+        if (values[i] == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED) {
+            activated = true;
+            break;
+        }
+    }
+
+    it->second.activated = activated;
+    if (activated) {
+        self->publishFocus(it->second.appId);
+    }
+}
+
+void ToplevelWatcher::onWlrClosed(void* data, zwlr_foreign_toplevel_handle_v1* handle) {
+    auto* self = watcherOf(data);
+    auto it = self->_wlrToplevels.find(handle);
+    if (it == self->_wlrToplevels.end()) {
+        return;
+    }
+    const bool wasFocused = it->second.activated;
+    self->_wlrToplevels.erase(it);
+    zwlr_foreign_toplevel_handle_v1_destroy(handle);
+    if (wasFocused) {
+        self->publishFocus(std::string());
+    }
 }
 
 void ToplevelWatcher::stop() {
@@ -41,6 +125,15 @@ void ToplevelWatcher::stop() {
         ext_foreign_toplevel_handle_v1_destroy(handle);
     }
     _toplevels.clear();
+
+    for (auto& [handle, _] : _wlrToplevels) {
+        zwlr_foreign_toplevel_handle_v1_destroy(handle);
+    }
+    _wlrToplevels.clear();
+    if (_wlr) {
+        zwlr_foreign_toplevel_manager_v1_stop(_wlr);
+        _wlr = nullptr;
+    }
 
     if (_list) {
         ext_foreign_toplevel_list_v1_destroy(_list);
