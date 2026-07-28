@@ -11,7 +11,7 @@ bằng `zwp_input_method_v2` rồi trả chữ về bằng `delete_surrounding_t
 
 | Giai đoạn | Nội dung | Trạng thái |
 | --- | --- | --- |
-| 1 | Gõ được trên Wayland (`zwp_input_method_v2`) | đang làm |
+| 1 | Gõ được trên Wayland (`zwp_input_method_v2`) | xong |
 | 2 | Bảng điều khiển Qt6 đầy đủ | xong |
 | 3 | X11 và XWayland | không cần nữa, xem bên dưới |
 
