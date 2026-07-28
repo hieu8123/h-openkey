@@ -23,9 +23,13 @@ nên vấn đề chỉ nằm ở đầu ra. Vì vậy OpenKey xuất chữ theo 
 - Ứng dụng có gửi surrounding text → `delete_surrounding_text` + `commit_string`
 - Còn lại → bàn phím ảo với keymap sinh động (kỹ thuật của `wtype`)
 
-Nguyên tắc bắt buộc: **không bao giờ trộn hai cơ chế trong cùng một lần xuất**.
-Phím BackSpace ảo đi qua định tuyến bàn phím còn `commit_string` đi qua
-text-input, và không gì bảo đảm ứng dụng xử lý chúng đúng thứ tự.
+Có một cái bẫy: một số ứng dụng (cosmic-term) **báo cáo** surrounding text nhưng
+lại **bỏ qua** `delete_surrounding_text`. Điều này hợp lý về bản chất — terminal
+không sở hữu văn bản, bộ soạn dòng của shell mới sở hữu. Không có cách nào biết
+trước qua giao thức, nên OpenKey **tự đo**: sau lần xoá đầu tiên trong một ứng
+dụng, nó đối chiếu độ dài văn bản mà ứng dụng báo về với độ dài đáng ra phải có.
+Nếu lệnh xoá bị bỏ qua thì chuyển sang phím BackSpace thật, và **ghi nhớ kết luận
+đó theo từng ứng dụng** để chỉ phải đo một lần.
 
 ## Build
 

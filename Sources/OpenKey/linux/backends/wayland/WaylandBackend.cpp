@@ -23,9 +23,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <vector>
 
 #include "CharCodec.h"
+#include "KeymapBuilder.h"
 #include "ToplevelWatcher.h"
 #include "cosmic-toplevel-info-unstable-v1-client-protocol.h"
 #include "ext-foreign-toplevel-list-v1-client-protocol.h"
@@ -152,9 +154,12 @@ private:
     zcosmic_toplevel_info_v1* _toplevelInfo = nullptr;
     ToplevelWatcher _toplevels;
 
-    zwp_virtual_keyboard_v1* _vk = nullptr;     // chuyen tiep phim goc
-    zwp_virtual_keyboard_v1* _vkText = nullptr; // go chu bang keymap sinh dong
-    std::string _realKeymap;                    // keymap that, de tra ve sau khi go
+    // Mot ban phim ao duy nhat, keymap ghep san va nap mot lan: vua chuyen tiep
+    // phim goc vua go chu, nen khong bao gio phai doi keymap.
+    zwp_virtual_keyboard_v1* _vk = nullptr;
+    std::string _realKeymap;
+    KeymapBuilder _keymap;
+    bool _keymapUploaded = false;
 
     xkb_context* _xkbContext = nullptr;
     xkb_keymap* _xkbKeymap = nullptr;
@@ -171,6 +176,22 @@ private:
     // Grab tao luc khoi dong (khi chua co o nhap nao) bi bo di sau lan doi
     // focus dau tien, nen phai grab lai moi lan input method duoc kich hoat.
     bool _grabbedWhileActive = false;
+
+    // Mot so ung dung (cosmic-term) BAO CAO surrounding text nhung lai BO QUA
+    // delete_surrounding_text. Khong co cach nao biet truoc qua giao thuc, nen
+    // ta tu do: sau moi lan xoa, doi chieu do dai ung dung bao ve voi do dai
+    // dang ra phai co. Lech dung bang phan dang ra bi xoa thi ket luan ung dung
+    // bo qua, va tu do chuyen sang dung phim BackSpace that.
+    size_t _beforeCursorBytes = 0;
+    bool _checkPending = false;
+    size_t _expectedIfHonored = 0;
+    size_t _expectedIfIgnored = 0;
+    bool _deleteIgnored = false;
+
+    // Ket luan duoc ghi nho theo tung ung dung. Truoc day no bi dat lai o moi
+    // su kien `activate`, ma `activate` no lien tuc khi focus nhay qua lai —
+    // moi lan dat lai la phai hi sinh them mot chu bi nhan doi de do lai.
+    std::map<std::string, bool> _deleteIgnoredByApp;
 
     uint32_t _serial = 0; // so su kien `done` da nhan, dung cho commit()
     uint32_t _lastTime = 0;
@@ -215,6 +236,7 @@ void WaylandBackend::onActivate(void* data, zwp_input_method_v2*) {
     auto* self = static_cast<WaylandBackend*>(data);
     OK_LOG("activate");
     self->_pending.active = true;
+    self->_checkPending = false;
     // Moi lan focus vao o nhap moi, phai gia dinh la khong co surrounding text
     // cho toi khi su kien tuong ung toi truoc `done`.
     self->_pending.hasSurroundingText = false;
@@ -225,12 +247,33 @@ void WaylandBackend::onDeactivate(void* data, zwp_input_method_v2*) {
     static_cast<WaylandBackend*>(data)->_pending.active = false;
 }
 
-void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*, const char*,
-                                       uint32_t, uint32_t) {
-    // Chi can biet ung dung co ho tro hay khong; noi dung khong dung toi vi
-    // chung ta tu theo doi do dai da go trong OpenKeyCore.
-    OK_LOG("surrounding_text");
-    static_cast<WaylandBackend*>(data)->_pending.hasSurroundingText = true;
+void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*,
+                                       const char* text, uint32_t cursor,
+                                       uint32_t anchor) {
+    auto* self = static_cast<WaylandBackend*>(data);
+    self->_pending.hasSurroundingText = true;
+
+    // Ghi lai 20 byte ngay truoc con tro. Day la bang chung truc tiep ve viec
+    // lan xoa vua roi co an hay khong — thay cho viec phong doan.
+    const std::string all = text ? text : "";
+    const size_t at = cursor <= all.size() ? cursor : all.size();
+    const size_t from = at > 20 ? at - 20 : 0;
+    OK_LOG("surrounding_text: truoc con tro=\"%s\" (%zu byte)",
+           all.substr(from, at - from).c_str(), at);
+
+    if (self->_checkPending) {
+        self->_checkPending = false;
+        if (at == self->_expectedIfIgnored && at != self->_expectedIfHonored) {
+            self->_deleteIgnored = true;
+            self->_deleteIgnoredByApp[self->_appId] = true;
+            OK_LOG("\"%s\" bo qua delete_surrounding_text, chuyen sang BackSpace that",
+                   self->_appId.c_str());
+        } else if (at == self->_expectedIfHonored) {
+            self->_deleteIgnoredByApp[self->_appId] = false;
+            OK_LOG("\"%s\" xu ly duoc delete_surrounding_text", self->_appId.c_str());
+        }
+    }
+    self->_beforeCursorBytes = at;
 }
 
 void WaylandBackend::regrabKeyboard() {
@@ -296,13 +339,31 @@ void WaylandBackend::onKeymap(void* data, zwp_input_method_keyboard_grab_v2*,
         self->_xkbState = self->_xkbKeymap ? xkb_state_new(self->_xkbKeymap) : nullptr;
         // Giu ban sao de tra ve sau moi lan go chu bang keymap sinh dong.
         self->_realKeymap.assign(map, strnlen(map, size));
+        if (const char* dump = std::getenv("OPENKEY_DUMP_KEYMAP")) {
+            if (FILE* f = std::fopen(dump, "wb")) {
+                std::fwrite(self->_realKeymap.data(), 1, self->_realKeymap.size(), f);
+                std::fclose(f);
+            }
+        }
         munmap(map, size);
     }
 
-    // Ban phim ao phai dung dung keymap cua ban phim that, neu khong phim
-    // chuyen tiep se ra sai chu.
-    if (self->_vk) {
-        zwp_virtual_keyboard_v1_keymap(self->_vk, format, fd, size);
+    // Nap keymap MOT LAN: ban ghep gom keymap that cong them mot phim cho tung
+    // ky tu tieng Viet. Nap lai nhieu lan se lam ung dung phai bien dich lai,
+    // va do chinh la nguon goc cua loi go ra sai chu.
+    if (self->_vk && !self->_keymapUploaded) {
+        if (self->_keymap.build(self->_realKeymap)) {
+            if (self->uploadKeymap(self->_vk, self->_keymap.mergedKeymap())) {
+                self->_keymapUploaded = true;
+                OK_LOG("nap keymap ghep san, %zu ky tu go duoc bang ban phim ao",
+                       self->_keymap.mappedCount());
+            }
+        }
+        if (!self->_keymapUploaded) {
+            // Khong ghep duoc thi it nhat phim chuyen tiep phai dung.
+            zwp_virtual_keyboard_v1_keymap(self->_vk, format, fd, size);
+            OK_LOG("khong ghep duoc keymap, khong go duoc chu bang ban phim ao");
+        }
     }
     close(fd);
 }
@@ -401,10 +462,6 @@ bool WaylandBackend::start() {
         return false;
     }
 
-    // Ban phim ao thu hai danh rieng cho viec go chu: keymap cua no thay doi
-    // lien tuc, khong duoc dung chung voi ban phim chuyen tiep phim goc.
-    _vkText = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(_vkManager, _seat);
-
     _im = zwp_input_method_manager_v2_get_input_method(_imManager, _seat);
     if (!_im) {
         _error = "khong tao duoc input method";
@@ -430,6 +487,9 @@ bool WaylandBackend::start() {
     // duoc kich hoat. Thieu thi bo qua, phan con lai van chay binh thuong.
     _toplevels.onFocusChanged = [this](const std::string& appId) {
         _appId = appId;
+        auto known = _deleteIgnoredByApp.find(appId);
+        _deleteIgnored = known != _deleteIgnoredByApp.end() && known->second;
+        _checkPending = false;
         OK_LOG("focus doi sang: %s", appId.c_str());
         if (_focusHandler) {
             _focusHandler(appId);
@@ -451,7 +511,6 @@ void WaylandBackend::stop() {
     if (_grab) { zwp_input_method_keyboard_grab_v2_release(_grab); _grab = nullptr; }
     if (_im) { zwp_input_method_v2_destroy(_im); _im = nullptr; }
     if (_vk) { zwp_virtual_keyboard_v1_destroy(_vk); _vk = nullptr; }
-    if (_vkText) { zwp_virtual_keyboard_v1_destroy(_vkText); _vkText = nullptr; }
     if (_xkbState) { xkb_state_unref(_xkbState); _xkbState = nullptr; }
     if (_xkbKeymap) { xkb_keymap_unref(_xkbKeymap); _xkbKeymap = nullptr; }
     if (_xkbContext) { xkb_context_unref(_xkbContext); _xkbContext = nullptr; }
@@ -512,46 +571,29 @@ bool WaylandBackend::uploadKeymap(zwp_virtual_keyboard_v1* vk, const std::string
 }
 
 void WaylandBackend::typeViaVirtualKeyboard(const std::u32string& out) {
-    if (!_vkText || out.empty()) return;
+    if (!_vk || out.empty()) return;
 
-    // Mot phim cho moi ky tu. xkb keycode = evdev + 8, va khoang hop le dung
-    // o 255, nen toi da 246 ky tu mot lan — thua suc cho MAX_BUFF cua engine.
-    constexpr size_t kMaxChars = 246;
-    const size_t n = out.size() > kMaxChars ? kMaxChars : out.size();
-
-    std::string keymap =
-        "xkb_keymap {\n"
-        "xkb_keycodes {\n  minimum = 8;\n  maximum = 255;\n";
-    for (size_t i = 0; i < n; i++) {
-        keymap += "  <K" + std::to_string(i) + "> = " + std::to_string(i + 1 + kEvdevToX11) + ";\n";
-    }
-    keymap +=
-        "};\n"
-        "xkb_types { include \"complete\" };\n"
-        "xkb_compatibility { include \"complete\" };\n"
-        "xkb_symbols {\n  name[Group1] = \"OpenKey\";\n";
-    for (size_t i = 0; i < n; i++) {
-        char sym[32];
-        std::snprintf(sym, sizeof(sym), "U%04X", static_cast<unsigned>(out[i]));
-        keymap += "  key <K" + std::to_string(i) + "> { [ " + sym + " ] };\n";
-    }
-    keymap += "};\n};\n";
-
-    if (!uploadKeymap(_vkText, keymap)) {
-        OK_LOG("khong nap duoc keymap sinh dong");
+    if (!_keymapUploaded) {
+        OK_LOG("chua co keymap ghep san, bo qua \"%s\"", utf8Encode(out).c_str());
         return;
     }
 
     // Khong duoc de sot phim bo tro nao dang giu, neu khong chu se ra sai.
-    zwp_virtual_keyboard_v1_modifiers(_vkText, 0, 0, 0, 0);
-    for (size_t i = 0; i < n; i++) {
-        const uint32_t code = static_cast<uint32_t>(i + 1);
-        zwp_virtual_keyboard_v1_key(_vkText, _lastTime, code, WL_KEYBOARD_KEY_STATE_PRESSED);
-        zwp_virtual_keyboard_v1_key(_vkText, _lastTime, code, WL_KEYBOARD_KEY_STATE_RELEASED);
-    }
+    zwp_virtual_keyboard_v1_modifiers(_vk, 0, 0, 0, 0);
 
-    // Tra keymap that ve ngay: neu khong, phim go binh thuong sau do se sai.
-    uploadKeymap(_vkText, _realKeymap);
+    for (char32_t cp : out) {
+        const int code = _keymap.evdevKeycodeFor(cp);
+        if (code < 0) {
+            // Thuong la ky tu cua bang ma cu (TCVN3, VNI-Windows) khong nam
+            // trong bang ghep. Bo qua con hon go ra ky tu sai.
+            OK_LOG("khong co ma phim cho U+%04X, bo qua", static_cast<unsigned>(cp));
+            continue;
+        }
+        zwp_virtual_keyboard_v1_key(_vk, _lastTime, static_cast<uint32_t>(code),
+                                    WL_KEYBOARD_KEY_STATE_PRESSED);
+        zwp_virtual_keyboard_v1_key(_vk, _lastTime, static_cast<uint32_t>(code),
+                                    WL_KEYBOARD_KEY_STATE_RELEASED);
+    }
 }
 
 void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& out) {
@@ -559,8 +601,9 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
 
     OK_LOG("sendResult: xoa %u byte (%u phim) roi chen \"%s\" [%s]", del.utf8Bytes,
            del.keyPresses, utf8Encode(out).c_str(),
-           (!_current.active || !_current.hasSurroundingText) ? "ban-phim-ao"
-                                                              : "surrounding-text");
+           !_current.active ? "ban-phim-ao"
+           : (!_current.hasSurroundingText || _deleteIgnored) ? "backspace+commit"
+                                                             : "text-input");
 
     // NGUYEN TAC: khong bao gio tron hai co che trong cung mot lan xuat.
     //
@@ -571,23 +614,48 @@ void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& 
     //
     // Vi vay: co surrounding text thi ca xoa lan chen deu qua text-input;
     // khong co thi ca hai deu qua ban phim ao.
-    if (!_current.active || !_current.hasSurroundingText) {
+    // Khong co o nhap text-input-v3 nao (XWayland: Chrome, VS Code). Chi con
+    // duong ban phim ao, va duong nay chi chay duoc neu compositor thuc su ap
+    // dung keymap cua ban phim ao cho ung dung — dieu chua duoc xac nhan.
+    if (!_current.active) {
         if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
         typeViaVirtualKeyboard(out);
         flush();
         return;
     }
 
-    // Co o nhap text-input-v3 thi luon xoa bang delete_surrounding_text, ke ca
-    // khi ung dung khong gui surrounding_text ve. Su kien surrounding_text chi
-    // noi ung dung co BAO CAO noi dung hay khong, khong lien quan toi viec no
-    // co xu ly duoc yeu cau xoa hay khong.
+    // Co text-input nhung khong gui surrounding_text: terminal. Terminal khong
+    // so huu van ban — bo soan dong cua shell moi so huu — nen no bo qua
+    // delete_surrounding_text, chi phim BackSpace that moi xoa duoc. Nhung chen
+    // chu thi commit_string van hoat dong.
     //
-    // Truoc day o day ban phim BackSpace ao khi thieu surrounding_text. Cach do
-    // tron hai co che: phim BackSpace di qua dinh tuyen ban phim con commit_string
-    // di qua text-input, va khong co gi bao dam ung dung xu ly chung dung thu tu.
+    // Hai duong khac nhau nhung deu di tren MOT ket noi cua chung ta va duoc
+    // compositor chuyen tiep theo dung thu tu, nen ung dung nao xu ly hang doi
+    // su kien tuan tu se thay BackSpace truoc roi moi thay chu.
+    if (!_current.hasSurroundingText || _deleteIgnored) {
+        if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
+        if (!out.empty()) {
+            zwp_input_method_v2_commit_string(_im, utf8Encode(out).c_str());
+        }
+        zwp_input_method_v2_commit(_im, _serial);
+        flush();
+        return;
+    }
+
+    // Co o nhap text-input-v3 thi luon xoa bang delete_surrounding_text, ke ca
+    // khi ung dung khong gui surrounding_text ve: su kien do chi noi ung dung
+    // co BAO CAO noi dung hay khong, khong lien quan toi viec no co xu ly duoc
+    // yeu cau xoa hay khong.
     if (del.utf8Bytes > 0) {
         zwp_input_method_v2_delete_surrounding_text(_im, del.utf8Bytes, 0);
+
+        // Chuan bi doi chieu o su kien surrounding_text ke tiep.
+        const size_t inserted = utf8Encode(out).size();
+        _checkPending = true;
+        _expectedIfHonored = _beforeCursorBytes >= del.utf8Bytes
+                                 ? _beforeCursorBytes - del.utf8Bytes + inserted
+                                 : inserted;
+        _expectedIfIgnored = _beforeCursorBytes + inserted;
     }
 
     if (!out.empty()) {

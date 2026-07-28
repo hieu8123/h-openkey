@@ -40,6 +40,7 @@ endforeach()
 
 add_library(openkey_wayland STATIC
     WaylandBackend.cpp
+    KeymapBuilder.cpp
     ToplevelWatcher.cpp
     ${PROTO_SOURCES}
     ${PROTO_HEADERS}
