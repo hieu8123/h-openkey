@@ -78,6 +78,9 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
         onSettingChanged();
     });
 
+    connect(_menu->addAction(tr("Bảng điều khiển…")), &QAction::triggered, this,
+            [this] { emit controlPanelRequested(); });
+
     _menu->addSeparator();
 
     QMenu* inputMenu = _menu->addMenu(tr("Kiểu gõ"));
@@ -121,6 +124,8 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
                 if (reason == QSystemTrayIcon::Trigger) {
                     _core.toggleLanguage();
                     onSettingChanged();
+                } else if (reason == QSystemTrayIcon::DoubleClick) {
+                    emit controlPanelRequested();
                 }
             });
     rebuildIcon();

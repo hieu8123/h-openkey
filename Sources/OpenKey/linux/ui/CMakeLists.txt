@@ -4,6 +4,7 @@ set(CMAKE_AUTOMOC ON)
 
 add_executable(openkey
     main.cpp
+    MainWindow.cpp
     TrayIcon.cpp
 )
 target_link_libraries(openkey PRIVATE openkey_core openkey_wayland Qt6::Widgets)

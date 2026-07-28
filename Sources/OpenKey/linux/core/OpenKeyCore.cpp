@@ -93,6 +93,12 @@ void OpenKeyCore::onMouseDown() {
     _sent.clear();
 }
 
+void OpenKeyCore::setSuspended(bool suspended) {
+    if (_suspended == suspended) return;
+    _suspended = suspended;
+    resetTypingState();
+}
+
 void OpenKeyCore::toggleLanguage() {
     vLanguage = vLanguage == 1 ? 0 : 1;
     resetTypingState();
@@ -172,7 +178,7 @@ void OpenKeyCore::emitResult(int backspaceCount, const std::u32string& text,
 }
 
 KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
-    if (!ev.pressed) {
+    if (!ev.pressed || _suspended) {
         return KeyVerdict::Forward;
     }
 

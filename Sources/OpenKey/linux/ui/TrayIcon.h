@@ -31,6 +31,9 @@ public:
 
     void show();
 
+signals:
+    void controlPanelRequested();
+
 private:
     void rebuildIcon();
     void onSettingChanged();

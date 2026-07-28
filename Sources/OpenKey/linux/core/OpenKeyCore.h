@@ -36,6 +36,9 @@ public:
 
     void toggleLanguage();
 
+    // Tam ngung khi chinh cua so OpenKey dang nhan focus, tranh vong lap phan hoi.
+    void setSuspended(bool suspended);
+
     // Xoa ky uc ve nhung gi da nam trong tu hien tai. Goi khi khong con chac
     // trang thai cua o nhap con khop voi ky uc cua minh.
     void resetTypingState();
@@ -65,6 +68,7 @@ private:
     std::vector<SentChar> _sent;
 
     std::string _focusedAppId;
+    bool _suspended = false;
 };
 
 } // namespace openkey

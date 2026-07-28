@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QSocketNotifier>
 #include <QSystemTrayIcon>
+#include <QWindow>
 
 #include <QDir>
 #include <QFile>
@@ -16,6 +17,7 @@
 #include "Backend.h"
 #include "Config.h"
 #include "OpenKeyCore.h"
+#include "MainWindow.h"
 #include "TrayIcon.h"
 
 namespace {
@@ -96,7 +98,24 @@ int main(int argc, char** argv) {
     QObject::connect(&notifier, &QSocketNotifier::activated, &app,
                      [&backend] { backend->dispatchEvents(); });
 
+    openkey::MainWindow window(config, core);
+    window.resize(680, 520);
+
     openkey::TrayIcon tray(config, core);
+    QObject::connect(&tray, &openkey::TrayIcon::controlPanelRequested, &app, [&] {
+        window.refreshFromState();
+        window.show();
+        window.raise();
+        window.activateWindow();
+    });
+
+    // Khi cua so cua chinh OpenKey dang nhan focus thi ngung xu ly phim, neu
+    // khong go vao chinh no se tao vong lap phan hoi.
+    QObject::connect(&app, &QApplication::focusWindowChanged, &app,
+                     [&](QWindow* focused) {
+                         core.setSuspended(focused != nullptr &&
+                                           focused == window.windowHandle());
+                     });
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         tray.show();
     } else {
