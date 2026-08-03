@@ -9,18 +9,61 @@ không sửa đổi** với bản macOS và Windows, nên cách gõ giống hệ
 
 Bản Linux có tên `h-openkey` để không lẫn với bản gốc.
 
-OpenKey **không** chạy trên ibus hay fcitx5. Nó tự làm input method: bắt bàn phím
-bằng `zwp_input_method_v2` rồi trả chữ về bằng phím BackSpace + `commit_string`.
-Không dùng preedit — đó là nguồn gốc của lỗi gạch chân và nhân đôi chữ mà OpenKey
-sinh ra để loại bỏ.
+OpenKey **không** chạy trên ibus hay fcitx5. Nó tự bắt bàn phím, và cách bắt khác
+nhau theo phiên làm việc:
+
+| Phiên | Bắt phím | Trả chữ về |
+| --- | --- | --- |
+| X11 / Xorg | `EVIOCGRAB` trên `/dev/input/event*` (tầng kernel) | XTEST + keycode gán sẵn |
+| Wayland | `zwp_input_method_v2` | BackSpace ảo + `commit_string` |
+
+Không dùng preedit ở cả hai — đó là nguồn gốc của lỗi gạch chân và nhân đôi chữ
+mà OpenKey sinh ra để loại bỏ.
 
 ## Phạm vi đã kiểm chứng
 
-**Chỉ Pop!_OS (COSMIC) là đã chạy ổn định 100%.** Ubuntu và các distro khác chưa
-được kiểm chứng — xem [README ở gốc repo](../../../README.md) để biết chi tiết
-điều kiện compositor.
+**X11 là đường chạy tốt nhất**, đã kiểm chứng trên Zorin OS (GNOME/Xorg): chặn
+phím ở tầng kernel nên không dính giới hạn nào của giao thức input method.
 
-## Đầu ra: vì sao lại rắc rối đến vậy
+Trên **Pop!_OS (COSMIC)** gõ được nhưng vướng hai giới hạn của Wayland mà không
+sửa được từ phía bộ gõ — menu chuột phải của dock/panel không mở được
+([cosmic-comp#1763](https://github.com/pop-os/cosmic-comp/issues/1763)), và phím
+tắt đổi chế độ chỉ chạy khi con trỏ đang ở ô nhập văn bản. Chi tiết ở
+[README gốc repo](../../../README.md).
+
+## Backend X11: chặn ở kernel, không phải XRecord
+
+XRecord **chỉ quan sát được phím, không chặn được**. Nghĩa là phím gốc đã tới ứng
+dụng trước khi bộ gõ kịp chạy, nên lúc nào cũng phải "gõ đè lên sau" — race
+condition là không tránh khỏi, và đó chính là bệnh mất chữ khi gõ nhanh. Cách duy
+nhất chặn được thật là xuống tầng kernel: `EVIOCGRAB` trên `/dev/input/event*`.
+Sau khi grab, **không ai khác** — kể cả X server — nhận được sự kiện của thiết bị
+đó nữa. Đổi lại phải thuộc nhóm `input`.
+
+Bốn thứ phải tự lo sau khi grab, mỗi thứ đều là một lỗi đã đo được:
+
+1. **Không được đổi keymap lúc đang gõ.** Ứng dụng tra chữ bằng bản sao keymap
+   của riêng nó, chỉ cập nhật khi xử lý tới `MappingNotify`. Gõ nhanh thì phím
+   tới **trước** thông báo đó, ứng dụng tra ra `NoSymbol` và **bỏ luôn ký tự**.
+   Vì vậy 237 ký tự được gán sẵn vào keycode trống **một lần lúc khởi động**
+   (67 cặp hoa/thường tiếng Việt + 8 dấu tổ hợp, ASCII thì dùng thẳng phím thật).
+2. **Không được bấm một phím đang được giữ.** Gõ nhanh là gõ gối đầu — phím trước
+   chưa nhả thì phím sau đã bấm. Lúc bơm lại chính phím đó để xuất chữ, X thấy nó
+   *đang bấm* nên **lọc bỏ lệnh bấm**, chỉ release lọt qua và ký tự biến mất. Đo
+   bằng `xev`: lần hỏng chỉ có `R kc=38`, không hề có `P kc=38`. Vì vậy
+   `tapKeycode()` tự nhả phím đó ra trước khi bơm.
+3. **Keysym Latin-1 phải đúng chuẩn.** Ký tự trong `U+0020..U+00FF` phải dùng
+   thẳng giá trị mã (`â` = `0x00E2`), không phải dạng Unicode `0x010000E2` —
+   nhiều ứng dụng không đổi ngược dạng phi chuẩn ra ký tự nên bỏ qua phím đó.
+4. **Phải tắt lặp phím của X** (`XAutoRepeatOff`). Bàn phím thật đã bị chặn ở
+   kernel nên mọi lần lặp phải đi ra từ evdev; để X tự lặp thêm thì màn hình có
+   ký tự mà engine không biết, sổ sách đếm xoá lệch ngay.
+
+Ngoài ra keycode đã mượn phải **trả về `NoSymbol` lúc thoát**, nếu không mỗi lần
+chạy lại mất dần cho tới khi cạn sạch; và `/dev/input` phải **quét lại định kỳ**
+vì bàn phím không dây hay ngắt rồi hiện lại dưới node khác.
+
+## Đầu ra trên Wayland: vì sao lại rắc rối đến vậy
 
 Trên Windows và macOS, xoá và chèn là **cùng một loại vật thể**: `SendInput` với
 `KEYEVENTF_UNICODE`, hoặc `CGEventKeyboardSetUnicodeString` — cùng một hàng đợi
@@ -99,25 +142,37 @@ ctest --test-dir build --output-on-failure
 ```
 
 Phụ thuộc: `qt6-base-dev`, `libwayland-dev`, `wayland-protocols`,
-`libxkbcommon-dev`, `cmake`, `g++`.
+`libxkbcommon-dev`, `libx11-dev`, `libxtst-dev`, `cmake`, `g++`.
 
 ## Chạy
 
-Chỉ **một** bộ gõ được giữ input method của phiên Wayland. Phải tắt hẳn bộ gõ
-khác trước:
+Trên **Wayland**, chỉ **một** bộ gõ được giữ input method của phiên. Phải tắt hẳn
+bộ gõ khác trước (trên X11 thì không cần, vì phím bị chặn từ tầng kernel):
 
 ```sh
 systemctl --user stop app-org.fcitx.Fcitx5@autostart.service   # hoặc ibus exit
 ./build/ui/h-openkey
 ```
 
+Trên **X11**, backend cần đọc được `/dev/input/event*` để `EVIOCGRAB`. Thiếu
+quyền thì nó báo `khong co quyen doc /dev/input/event*` rồi dừng:
+
+```sh
+sudo usermod -aG input $USER   # rồi ĐĂNG XUẤT và đăng nhập lại
+```
+
+Script cài tự làm bước này; build tay thì phải tự chạy.
+
 Lưu ý về cosmic-comp: khi đã có bộ gõ khác giữ chỗ, nó **không** gửi sự kiện
 `unavailable` mà chỉ lặng lẽ không bao giờ kích hoạt client thứ hai. Triệu chứng
 là OpenKey chạy bình thường nhưng không gõ ra chữ nào. Vì vậy OpenKey tự dò các
 tiến trình `fcitx5`, `fcitx`, `ibus-daemon` lúc khởi động và cảnh báo.
 
-Đặt `OPENKEY_DEBUG=1` để xem nhật ký sự kiện: `activate`, `done`, từng phím nhận
-được và từng lần xoá/chèn.
+Nhật ký chẩn đoán bật được hai cách: `OPENKEY_DEBUG=1` lúc chạy từ terminal (in
+ra stderr), hoặc nút **Bắt đầu ghi nhật ký** trong bảng điều khiển → tab *Hệ
+thống* (ghi ra `~/.local/share/h-openkey/debug.log`, có mốc thời gian tới mili
+giây). Nội dung gồm từng phím nhận được, từng lần xoá/chèn, keycode đã bơm, và
+các lần đổi cửa sổ focus.
 
 ## Cài đặt bằng một lệnh
 
@@ -169,7 +224,9 @@ phân sẵn có của engine.
 
 ```
 core/       thuần logic, không phụ thuộc Wayland/X11/Qt — kiểm thử bằng FakeBackend
-backends/   wayland/ (giai đoạn 1), x11/ (giai đoạn 3)
+backends/   evdev/   chặn phím ở kernel (EVIOCGRAB), dùng cho backend X11
+            wayland/ input-method-v2 + virtual-keyboard
+            x11/     evdev + XTEST
 ui/         Qt6: biểu tượng khay, bảng điều khiển
 tests/      bơm chuỗi phím, đối chiếu văn bản ra — không cần compositor
 ```
