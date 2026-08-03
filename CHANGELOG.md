@@ -49,6 +49,13 @@ Ba lỗi nữa quanh việc chuyển tiếng Việt / tiếng Anh:
   im và bộ đệm gõ không được xoá khi đổi ứng dụng (gõ tiếp ở ứng dụng mới sẽ xoá
   sai số ký tự). Nay tự hỏi cửa sổ đang focus mỗi ~150ms.
 
+- **Chế độ tiếng Anh chưa bao giờ có tác dụng.** `Engine.h` chỉ *khai báo*
+  `vLanguage` chứ engine không đọc nó — việc chặn lại là phần của tầng nền tảng.
+  Bản macOS (`OpenKey.mm:672`) và Windows (`OpenKey.cpp:565`) đều có bước
+  `if (vLanguage == 0)`, riêng bản Linux thiếu hẳn, nên chuyển sang tiếng Anh chỉ
+  đổi biểu tượng còn chữ vẫn bị bỏ dấu. Nay ở chế độ tiếng Anh chỉ xử lý gõ tắt
+  (nếu bật), còn lại chuyển tiếp nguyên phím.
+
 Đổi: phím tắt mặc định thành **Ctrl + Shift** (chỉ phím bổ trợ) cho khớp README;
 trước đó code để `Alt + Z` trong khi tài liệu ghi `Ctrl + Shift`.
 

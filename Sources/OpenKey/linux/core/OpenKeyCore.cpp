@@ -280,6 +280,29 @@ KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
     }
 
     const Uint8 capsStatus = ev.shift ? 1 : (ev.capsLock ? 2 : 0);
+
+    // Che do tieng Anh. Engine KHONG tu doc vLanguage — Engine.h chi khai bao
+    // no, con viec chan lai la phan cua tang nen tang (xem OpenKey.mm dong 672
+    // va win32/OpenKey.cpp dong 565). Thieu buoc nay thi doi sang tieng Anh chi
+    // doi bieu tuong con chu van bi bo dau nhu thuong.
+    if (vLanguage == 0) {
+        if (vUseMacro && vUseMacroInEnglishMode) {
+            vEnglishMode(vKeyEventState::KeyDown, static_cast<Uint16>(ev.keycode),
+                         ev.shift || ev.capsLock, ev.otherControlKey());
+            if (_hook->code == vReplaceMaro) {
+                std::u32string text;
+                std::vector<SentChar> costs;
+                for (uint32_t data : _hook->macroData) {
+                    appendEngineChar(data, text, costs);
+                }
+                appendEngineChar(ev.keycode | (capsStatus ? CAPS_MASK : 0), text, costs);
+                emitResult(_hook->backspaceCount, text, costs);
+                return KeyVerdict::Swallow;
+            }
+        }
+        return KeyVerdict::Forward;
+    }
+
     vKeyHandleEvent(vKeyEvent::Keyboard, vKeyEventState::KeyDown,
                     static_cast<Uint16>(ev.keycode), capsStatus,
                     ev.otherControlKey());
