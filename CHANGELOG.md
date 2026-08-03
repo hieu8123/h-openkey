@@ -1,6 +1,49 @@
 # OpenKey Change Log
 
-##### OpenKey for Linux: (in development)
+> Từ đây trở đi, phần Linux (`h-openkey`) đi đường riêng và **không còn theo dõi
+> repo gốc** nữa. Các mục dưới mốc "H-OpenKey (Linux)" là của bản fork; phần
+> lịch sử của OpenKey gốc giữ nguyên bên dưới để ghi công.
+
+## H-OpenKey (Linux)
+
+##### Version 1.1: (28/07/2026)
+
+**Sửa lỗi không gõ được trong ô chat Facebook và một số ô nhập trên web.**
+
+Nguyên nhân: chữ đi ra bằng **hai đường** khác nhau — phím ảo (BackSpace, chuyển
+tiếp phím) và text-input (`commit_string`). Trong cùng một đường thì thứ tự được
+bảo đảm, nhưng giữa hai đường thì không. Các bộ soạn thảo giàu định dạng trên web
+(ô chat Facebook dùng Lexical, và Draft.js/ProseMirror) tự dựng lại nội dung theo
+mô hình riêng, nên khi hai đường đến lệch nhau thì **một trong hai bị nuốt mất**,
+và không đoán trước được bên nào. Đo được cả hai chiều trong cùng ô chat đó:
+
+```
+mất phần xoá:   "ting vie" + (xoá 1, chèn "ê")  →  "ting vieê"
+mất phần chèn:  "tie"      + (xoá 1, chèn "ê")  →  "ti"
+```
+
+Sửa:
+
+- Mọi thao tác xuất chữ đi qua **một hàng đợi FIFO duy nhất**, không còn chỗ nào
+  gửi thẳng ra ngoài hàng đợi. Trong cùng một đường thì chạy liền, chỉ khi **đổi
+  đường** mới chờ ứng dụng báo đã xử lý xong (`surrounding_text`). Có hạn chót
+  60 ms để không bao giờ kẹt nếu ứng dụng im lặng.
+- Với họ Chromium, **ký tự thường cũng đi đường text-input** — không phải vì
+  đường phím hỏng, mà để khỏi phải đổi đường; gõ một chữ có dấu vì thế chỉ còn
+  một lần chờ thay vì hai, đỡ giật khi gõ nhanh.
+- **Firefox** đi đường bàn phím ảo, là cấu hình đo được là đúng với nó.
+- VS Code, terminal và các ứng dụng khác **giữ nguyên** cơ chế cũ, không chờ.
+
+##### Version 1.0: (07/2026)
+- Bộ gõ tiếng Việt native trên Wayland qua `zwp_input_method_v2`.
+- Bảng điều khiển Qt6, bảng gõ tắt, công cụ chuyển mã, tuỳ chọn phím chuyển chế độ.
+- Smart Switch Key theo ứng dụng đang focus.
+- Backend X11 (XRecord + XTEST).
+- Script cài một lệnh, đóng gói bản phát hành, chạy cùng phiên đăng nhập.
+
+---
+
+## OpenKey gốc (macOS / Windows)
 
 ##### Version 1.2 RC5: (26/08/2019)
 - Sửa lỗi không gõ được chữ "quởn".

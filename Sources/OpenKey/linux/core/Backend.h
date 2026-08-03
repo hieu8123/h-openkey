@@ -81,6 +81,11 @@ public:
     // Goi truoc khi vong lap su kien di ngu, de day cac yeu cau con ton dong.
     virtual void flush() {}
 
+    // Goi deu dan (vai mili giay mot lan). Backend nao xep hang cac thao tac va
+    // cho ung dung bao lai thi dung day lam han chot, de khong ket khi ung dung
+    // im lang. Backend khong can thi de nguyen.
+    virtual void tick() {}
+
     void setKeyHandler(std::function<KeyVerdict(const KeyEvent&)> h) {
         _handler = std::move(h);
     }

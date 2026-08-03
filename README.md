@@ -1,128 +1,180 @@
+# H-OpenKey
 
-# H-OpenKey — bản fork của OpenKey, làm cho người dùng Linux
+[![Giấy phép](https://img.shields.io/badge/gi%E1%BA%A5y%20ph%C3%A9p-GPL--3.0-blue.svg)](LICENSE)
+[![Phiên bản](https://img.shields.io/badge/phi%C3%AAn%20b%E1%BA%A3n-1.1-brightgreen.svg)](CHANGELOG.md)
+[![Nền tảng](https://img.shields.io/badge/n%E1%BB%81n%20t%E1%BA%A3ng-Linux-lightgrey.svg)](#-tương-thích)
+[![Wayland](https://img.shields.io/badge/Wayland-input--method--v2-orange.svg)](Sources/OpenKey/linux/README.md)
+[![Standard Readme](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
 
-Đây là **bản fork** của [OpenKey](https://github.com/tuyenvm/OpenKey) của Tuyên Mai.
-Toàn bộ công lao thiết kế bộ gõ và engine xử lý tiếng Việt thuộc về dự án gốc;
-bản fork này **chỉ thêm phần hỗ trợ Linux**.
+> Bộ gõ tiếng Việt cho Linux, sử dụng engine OpenKey của Tuyên Mai
 
-Bản gốc hỗ trợ macOS và Windows. Bản fork này thêm Linux, dùng **chung một engine
-không sửa đổi** với hai nền tảng kia — nên cách gõ, kiểu gõ và bảng mã giống hệt.
+H-OpenKey đem bộ gõ [OpenKey](https://github.com/tuyenvm/OpenKey) sang Linux. Phần
+engine xử lý tiếng Việt được dùng lại **nguyên vẹn, không sửa một dòng nào**, nên
+cách gõ, kiểu gõ và bảng mã giống hệt bản macOS và Windows — ai quen OpenKey rồi
+thì sang Linux không phải học lại gì.
 
-- **Hướng dẫn cho Linux: [`Sources/OpenKey/linux/README.md`](Sources/OpenKey/linux/README.md)**
-- Cài bằng một lệnh:
-  ```sh
-  curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
-  ```
+Bộ gõ chạy thẳng trên Wayland qua `zwp_input_method_v2`, **không cần ibus hay
+fcitx5**, và không dùng vùng tiền soạn nên **không có gạch chân dưới chữ đang gõ**.
 
-Bản Linux có tên `h-openkey` để không lẫn với bản gốc nếu bạn dùng cả hai.
+Bản Linux mang tên `h-openkey` để không lẫn với bản gốc nếu bạn dùng cả hai.
 
-Phần macOS và Windows bên dưới giữ nguyên của dự án gốc, bản fork này không đụng
-tới — trừ đúng một dòng `#include <algorithm>` trong `ConvertTool.cpp` mà libstdc++
-cần để biên dịch được.
+## Mục lục
 
----
+- [Bối cảnh](#-bối-cảnh)
+- [Tương thích](#-tương-thích)
+- [Cài đặt](#-cài-đặt)
+- [Sử dụng](#-sử-dụng)
+- [Tính năng](#-tính-năng)
+- [Tìm hiểu sâu](#-tìm-hiểu-sâu)
+- [Đóng góp](#-đóng-góp)
+- [Ghi công](#-ghi-công)
+- [Giấy phép](#-giấy-phép)
 
-# [OpenKey](http://open-key.org)
-### [Download bản mới nhất](https://github.com/tuyenvm/OpenKey/releases)
-[![GitHub release](https://img.shields.io/github/v/release/tuyenvm/OpenKey.svg)](https://github.com/tuyenvm/OpenKey/releases/latest)
+## 📖 Bối cảnh
 
-### Open source Vietnamese Input App for macOS - Bộ gõ tiếng Việt nguồn mở cho macOS.
-Bộ gõ tiếng Việt mới cho macOS, sử dụng kỹ thuật `Backspace`. Loại bỏ lỗi gạch chân khó chịu ở bộ gõ mặc định. Hoàn toàn miễn phí và là nguồn mở, luôn cập nhật và phát triển.
+OpenKey của Tuyên Mai là bộ gõ tiếng Việt nguồn mở cho macOS và Windows, nổi bật ở
+kỹ thuật `Backspace` — thay vì giữ chữ trong vùng tiền soạn rồi mới chốt, nó sửa
+trực tiếp vào ô nhập. Nhờ vậy không có gạch chân, không nhân đôi chữ.
 
-### Mã nguồn của ứng dụng được mở công khai, minh bạch dưới giấy phép GPL. Điều này nghĩa là bạn hoàn toàn có thể tải mã nguồn về tự build, cải tiến theo mục đích của bạn. Nếu bạn tái phân phối bản cải tiến của bạn, thì nó cũng phải là mã nguồn mở và thông báo bản gốc là OpenKey.
+Bản fork này thêm phần Linux. Trên Linux, cái khó không nằm ở engine mà ở đường
+đưa chữ ra: Wayland cố tình không cho ứng dụng ngoài móc bàn phím toàn cục hay bơm
+Unicode tuỳ ý như `SendInput` của Windows hay `CGEventPost` của macOS. Muốn nuốt
+phím thì buộc phải tự làm input method, và từ đó phát sinh một loạt chuyện chỉ
+Linux mới có. Chi tiết nằm ở [tài liệu kỹ thuật](Sources/OpenKey/linux/README.md).
 
-### Lưu ý, khi sử dụng OpenKey, bạn nên tắt hẳn bộ gõ khác vì 2 chương trình bộ gõ sẽ xung đột nhau, dẫn đến thao tác không chính xác.
+> [!IMPORTANT]
+> Kể từ phiên bản 1.1, bản fork này **đi đường riêng và không còn theo dõi hay
+> đồng bộ với repo gốc** nữa. Repo gốc là điểm khởi đầu, không phải nguồn cập nhật.
 
-![Giao diện](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-main-control.png "Main UI")
-![Giao diện](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-main-control-2.png "Main UI")
-![Giao diện](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-main-control-3.png "Main UI")
-![Menu](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-small-control.png "Menu bar")
-![Gõ tắt](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-macro.png "Macro")
-![Chuyển mã](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-convert-tool.png "ConvertTool")
+## ✅ Tương thích
 
-## Hỗ trợ kiểu gõ
-- Telex
-- VNI
-- Simple Telex
+Điều quyết định là **compositor**, không phải distro.
 
-## Bảng mã thông dụng:
-- Unicode (Unicode dựng sẵn).
-- TCVN3 (ABC).
-- VNI Windows.
-- Unicode Compound (Unicode tổ hợp).
-- Vietnamese Locale CP 1258.
-- ...
+| Môi trường | Trạng thái |
+| --- | --- |
+| 🟢 Pop!_OS (COSMIC) | Ổn định, đã kiểm chứng trên từng ứng dụng |
+| 🟡 KDE Plasma, sway, wlroots | Nhiều khả năng chạy, chưa ai thử |
+| 🟡 Ubuntu — phiên "Ubuntu on Xorg" | Nhiều khả năng chạy qua backend X11, chưa ai thử |
+| 🔴 Ubuntu — phiên Wayland mặc định (GNOME) | Nhiều khả năng **không** chạy, xem bên dưới |
 
-## Tính năng:
-- **Modern orthography** (On/Off) - Đặt dấu oà, uý thay vì òa, úy.
-- **Quick Telex** (On/Off) - Gõ nhanh (cc=ch, gg=gi, kk=kh, nn=ng, qq=qu, pp=ph, tt=th).
-- **Grammar check** (On/Off) - Kiểm tra ngữ pháp.
-- **Spelling check** (On/Off) - Kiểm tra chính tả.
-- **Restore key if invalid word** (on/off) - Phục hồi phím với từ sai.
-- **Run on startup** (On/Off) - Chạy cùng macOS.
-- **Gray menu bar icon** (On/Off) - Biểu tượng xám trên thanh menu phù hợp với chế độ Dark mode.
-- **Switch input mode by shortcut key** - Đổi chế độ gõ bằng phím tắt tùy chọn.
-- **Autocorrect fixed** (On/Off) - Sửa lỗi autocorrect trên trình duyệt như Chrome, Safari, Firefox, Microsoft Excel.
-- **Underline issue fixed on macOS** (On/Off) - Sửa lỗi gạch chân trên macOS.
-- **Tạm tắt kiểm tra chính tả bằng phím Ctrl** (On/Off) (Bản 1.5 về sau).
-- **Tạm tắt OpenKey bằng phím Cmd/Alt** (On/Off) (Bản 2.0.1 về sau).
-- **Cho phép dùng f z w j làm phụ âm đầu** (On/Off) (Bản 1.5 về sau).
-- **Gõ tắt phụ âm đầu: f->ph, j->gi, w->qu** (On/Off) (Bản 1.6 về sau).
-- **Gõ tắt phụ âm cuối: g->ng, h->nh, k->ch** (On/Off) (Bản 1.6 về sau).
-- **Hiện biểu tượng trên thanh Dock** (On/Off) (Bản 2.0.1 về sau). Bấm vào icon trên thanh Dock sẽ mở nhanh Bảng điều khiển.
-- **Macro** - Tính năng gõ tắt vô cùng tiện lợi. Gõ tắt của macOS chỉ hỗ trợ 20 ký tự, còn OpenKey không giới hạn ký tự.
-- **Chuyển chế độ thông minh:** (On/Off) (Bản 1.2 về sau) - Bạn đang dùng chế độ gõ Tiếng Việt trên ứng dụng A, bạn chuyển qua ứng dụng B trước đó bạn dùng chế độ gõ Tiếng Anh, OpenKey sẽ tự động chuyển qua chế độ gõ Tiếng Anh cho bạn, khi bạn quay lại ứng dụng A, OpenKey tất nhiên sẽ chuyển lại chế độ gõ tiếng Việt, rất cơ động.
-- **Viết Hoa chữ cái đầu câu** (On/Off) (Bản 1.2 về sau) - Khi gõ văn bản dài, đôi khi bạn quên ghi hoa chữ cái đầu câu khi kết thúc một câu hoặc khi xuống hàng, tính năng này sẽ tự ghi hoa chữ cái đầu câu cho bạn, thật tuyệt vời.
-- **Chế độ “Gửi từng phím”:** (On/Off) (Bản 1.1 về sau) mặc định dùng kỹ thuật mới gửi dữ liệu 1 lần thay vì gửi nhiều lần cho chuỗi ký tự, nên nếu có ứng dụng nào không tương thích, hãy bật tính năng này lên, mặc định thì nên tắt vì kỹ thuật mới sẽ chạy nhanh hơn.
-- **Cập nhật tự động:** (Bản 1.3 về sau) tính năng hỗ trợ cập nhật phiên bản OpenKey mới nhất mỗi khi mở OpenKey hoặc tự check trong phần mục Giới thiệu.
-- **Công cụ chuyển mã:** (Bản 1.4 về sau) hỗ trợ chuyển mã qua lại văn bản, thích hợp cho việc chuyển đổi văn bản cũ viết bằng VNI, TCVN3 qua Unicode,... Hỗ trợ cấu hình phím tắt chuyển mã nhanh, bảng cấu hình tùy chọn chuyển mã.
-- **Tự ghi nhớ bảng mã theo ứng dụng:** (Bản 2.0.1 về sau) Phù hợp cho các bạn dùng Photoshop, CAD,... với các bảng mã VNI, TCVN3. OpenKey tự ghi nhớ ứng dụng nào dùng bảng mã nào để lần sau sử dụng Photoshop, CAD,... OpenKey có thể tự chuyển sang bảng mã đó.
-- ...
+> [!WARNING]
+> **Mới chỉ Pop!_OS là ổn định 100%.** Ubuntu và các distro khác thì chưa — không
+> phải vì code từ chối chúng, mà vì chưa được kiểm chứng thực tế.
 
+Backend Wayland cần hai giao thức, thiếu một cái là không khởi động được:
 
-[Changelog](https://github.com/tuyenvm/OpenKey/blob/master/CHANGELOG.md)
+- `zwp_input_method_manager_v2`
+- `zwp_virtual_keyboard_manager_v1`
 
-## Cài đặt:
-**Cài đặt thủ công:**  
-Tải bản OpenKey mới nhất từ [đây](https://github.com/tuyenvm/OpenKey/releases/latest), mở file `dmg` ra rồi kéo thả `OpenKey.app` vào thư mục `Application`.
+GNOME/Mutter — mặc định của Ubuntu — theo hiểu biết hiện tại không cung cấp
+`input-method-v2` cho ứng dụng ngoài. Nếu vậy, trên Ubuntu Wayland bộ gõ sẽ rơi
+xuống backend X11, mà X11 dưới XWayland chỉ với tới được ứng dụng XWayland. Điều
+này **chưa được kiểm chứng trên máy thật**, mới chỉ suy ra từ yêu cầu trong code.
 
-**Cài bằng Homebrew:** (by nhymxu)  
-Nếu chưa cài Homebrew, mở terminal, nhập:
-```
-$ /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+Kiểm tra máy của bạn:
+
+```sh
+OPENKEY_DEBUG=1 h-openkey 2>&1 | head -5
 ```
 
-Kiểm tra phiên bản OpenKey:
-```
-$ brew info --cask openkey
-```
-Gõ lệnh sau để homebrew tự cài OpenKey cho bạn:
-```
-$ brew install --cask openkey
+Thấy dòng `khong theo doi duoc cua so dang focus` nghĩa là compositor không cho
+biết cửa sổ nào đang focus. Khi đó Smart Switch Key tắt, và các cách xử lý riêng
+cho Firefox với Chrome cũng không kích hoạt — chữ có thể ra sai trong ô chat
+Facebook và vài ô nhập trên web.
+
+## 📦 Cài đặt
+
+Một lệnh, không cần clone mã:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 ```
 
-Để update phiên bản mới nhất của OpenKey
+Script tự cài phụ thuộc (`apt`, `dnf`, `pacman`, `zypper`), build, đặt vào
+`~/.local/bin`, tạo mục trong trình đơn ứng dụng và bật chạy cùng phiên đăng nhập.
+
+Gỡ ra:
+
+```sh
+bash install.sh --uninstall
 ```
-$ brew upgrade --cask openkey
+
+<details>
+<summary>Tự build từ mã nguồn</summary>
+
+```sh
+git clone https://github.com/hieu8123/OpenKey.git
+cd OpenKey
+cmake -S Sources/OpenKey/linux -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-## Note - Lưu ý:
-OpenKey cần cấp quyền, vào *System Preferences -> Security & Privacy -> Accessibility*, kích hoạt `OpenKey.app`. **Không tắt nó khi đang dùng OpenKey**.
-![Guide](https://raw.githubusercontent.com/tuyenvm/tuyenvm.github.io/master/images/openkey-guide.png "Accessibility").
+Phụ thuộc: `cmake`, `g++`, `qt6-base-dev`, `libwayland-dev`, `wayland-protocols`,
+`libxkbcommon-dev`, `libx11-dev`, `libxtst-dev`.
 
-## Tác giả
-- Mai Vũ Tuyên.
-- Mọi góp ý, gửi cho mình qua maivutuyen.91@gmail.com  
-- Fanpage: [https://www.facebook.com/OpenKeyVN](https://www.facebook.com/OpenKeyVN)
+</details>
 
-## Liên kết
-- [OpenKey cho Windows, xem chi tiết tại đây](https://github.com/tuyenvm/OpenKey/tree/master/Sources/OpenKey/win32)
-- [OpenKey cho Linux (đang phát triển)](https://github.com/tuyenvm/OpenKey/tree/master/Sources/OpenKey/linux)
-## Một điều nhỏ nhoi
-Đừng quên ủng hộ tác giả bằng cách mua ly cafe cho tác giả tỉnh ngủ nhé:  
-[Buy me a coffee ^^](https://tuyenvm.github.io/donate.html)  
-[Redbull cũng được ^^](https://paypal.me/tuyenmai)  
-Hoặc trực tiếp qua ví momo:   
-![Donate by momo](https://tuyenvm.github.io/images/momo.png "Momo").   
+## 🚀 Sử dụng
 
-Cảm ơn các bạn rất nhiều.
+> [!CAUTION]
+> Mỗi phiên Wayland chỉ **một** bộ gõ được giữ input method. Phải tắt hẳn bộ gõ
+> khác trước, nếu không H-OpenKey chạy nhưng không gõ ra chữ nào.
+
+```sh
+systemctl --user stop app-org.fcitx.Fcitx5@autostart.service   # hoặc: ibus exit
+h-openkey
+```
+
+Bộ gõ nằm ở khay hệ thống. Biểu tượng cho biết đang ở chế độ tiếng Việt hay tiếng
+Anh; bấm vào để mở bảng điều khiển. Mặc định chuyển chế độ bằng `Ctrl + Shift`,
+đổi được trong bảng điều khiển.
+
+## ✨ Tính năng
+
+| | |
+| --- | --- |
+| ⌨️ **Kiểu gõ** | Telex, VNI, Simple Telex 1, Simple Telex 2 |
+| 🔤 **Bảng mã** | Unicode dựng sẵn, TCVN3 (ABC), VNI Windows, Unicode tổ hợp |
+| 🧠 **Smart Switch Key** | Nhớ chế độ gõ theo từng ứng dụng, chuyển cửa sổ là tự đổi |
+| ✍️ **Gõ tắt** | Bảng gõ tắt riêng, dùng được cả khi đang ở chế độ tiếng Anh |
+| 🔄 **Chuyển mã** | Công cụ chuyển văn bản giữa các bảng mã |
+| 🎯 **Kiểm tra chính tả** | Gõ sai thì trả lại nguyên các phím đã bấm |
+| 🔠 **Tự viết hoa** | Viết hoa đầu câu tự động |
+| ⚡ **Gõ tắt phụ âm** | `f→ph`, `j→gi`, `w→qu`, `g→ng`, `h→nh`, `k→ch` |
+| 🎛️ **Đặt dấu** | Chọn kiểu `oà, uý` hoặc `òa, úy`; cho phép đặt dấu tự do |
+
+## 🔬 Tìm hiểu sâu
+
+Kiến trúc, cách chọn đường đưa chữ ra theo từng ứng dụng, và **ba hướng đã thử rồi
+thất bại** (kèm lý do, để không ai đi lại vòng đó) nằm ở:
+
+**→ [`Sources/OpenKey/linux/README.md`](Sources/OpenKey/linux/README.md)**
+
+## 🤝 Đóng góp
+
+Rất hoan nghênh, nhất là báo cáo từ các distro và compositor khác — đó đúng là chỗ
+đang thiếu dữ liệu nhất.
+
+Khi báo lỗi, kèm giúp:
+
+1. Distro và compositor (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`)
+2. Ứng dụng gặp lỗi, và chuỗi phím đã gõ
+3. Nhật ký `OPENKEY_DEBUG=1 h-openkey`
+
+## 🙏 Ghi công
+
+Bộ gõ này sử dụng engine của [**OpenKey**](https://github.com/tuyenvm/OpenKey), tác
+giả [**Tuyên Mai**](https://github.com/tuyenvm). Toàn bộ công lao thiết kế bộ gõ,
+kỹ thuật `Backspace` và engine xử lý tiếng Việt thuộc về dự án gốc — bản fork này
+chỉ thêm phần chạy trên Linux.
+
+Trang chủ dự án gốc: [open-key.org](http://open-key.org)
+
+## 📄 Giấy phép
+
+[GPL-3.0](LICENSE) — kế thừa từ dự án gốc.
+
+Bạn hoàn toàn có thể tải mã nguồn về tự build và cải tiến theo mục đích của mình.
+Nếu tái phân phối bản cải tiến, nó cũng phải là mã nguồn mở và ghi rõ bản gốc là
+OpenKey.

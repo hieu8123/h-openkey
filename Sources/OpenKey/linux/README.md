@@ -10,33 +10,82 @@ không sửa đổi** với bản macOS và Windows, nên cách gõ giống hệ
 Bản Linux có tên `h-openkey` để không lẫn với bản gốc.
 
 OpenKey **không** chạy trên ibus hay fcitx5. Nó tự làm input method: bắt bàn phím
-bằng `zwp_input_method_v2` rồi trả chữ về bằng `delete_surrounding_text` +
-`commit_string`. Không dùng preedit — đó là nguồn gốc của lỗi gạch chân và nhân
-đôi chữ mà OpenKey sinh ra để loại bỏ.
+bằng `zwp_input_method_v2` rồi trả chữ về bằng phím BackSpace + `commit_string`.
+Không dùng preedit — đó là nguồn gốc của lỗi gạch chân và nhân đôi chữ mà OpenKey
+sinh ra để loại bỏ.
 
-## Trạng thái
+## Phạm vi đã kiểm chứng
 
-| Giai đoạn | Nội dung | Trạng thái |
+**Chỉ Pop!_OS (COSMIC) là đã chạy ổn định 100%.** Ubuntu và các distro khác chưa
+được kiểm chứng — xem [README ở gốc repo](../../../README.md) để biết chi tiết
+điều kiện compositor.
+
+## Đầu ra: vì sao lại rắc rối đến vậy
+
+Trên Windows và macOS, xoá và chèn là **cùng một loại vật thể**: `SendInput` với
+`KEYEVENTF_UNICODE`, hoặc `CGEventKeyboardSetUnicodeString` — cùng một hàng đợi
+nằm dưới ứng dụng, thứ tự do hàng đợi bảo đảm, ứng dụng không phân biệt được với
+gõ tay thật. Không có gì để trộn.
+
+Wayland cố tình không có cả hai thứ đó. Muốn nuốt phím thì **buộc phải làm input
+method**; mà làm input method thì ứng dụng chuyển sang chờ chữ ở kênh text-input.
+Thành ra chữ đi ra bằng **hai đường** và không có gì bảo đảm thứ tự giữa chúng:
+
+| Đường | Dùng cho |
+| --- | --- |
+| Bàn phím ảo | BackSpace, chuyển tiếp phím, gõ chữ bằng keymap ghép sẵn |
+| text-input | `commit_string` |
+
+Các bộ soạn thảo giàu định dạng trên web (ô chat Facebook dùng Lexical, và
+Draft.js/ProseMirror) tự dựng lại nội dung theo mô hình riêng, nên khi hai đường
+đến lệch nhau thì một trong hai bị nuốt mất — không đoán trước được bên nào:
+
+```
+mất phần xoá:   "ting vie" + (xoá 1, chèn "ê")  →  "ting vieê"
+mất phần chèn:  "tie"      + (xoá 1, chèn "ê")  →  "ti"
+```
+
+Cách xử lý: **một hàng đợi FIFO duy nhất** cho mọi thao tác. Trong cùng một đường
+thì chạy liền không chờ; chỉ khi **đổi đường** mới dừng lại chờ ứng dụng báo đã
+xử lý xong (`surrounding_text`), có hạn chót 60 ms để không bao giờ kẹt.
+
+Đường đi chọn theo ứng dụng, mỗi nhánh dựa trên đo đạc thực tế:
+
+| Ứng dụng | Xoá | Chèn |
 | --- | --- | --- |
-| 1 | Gõ được trên Wayland (`zwp_input_method_v2`) | xong |
-| 2 | Bảng điều khiển Qt6 đầy đủ | xong |
-| 3 | X11 và XWayland | không cần nữa, xem bên dưới |
+| Không có phiên text-input (XWayland) | BackSpace ảo | keymap ghép sẵn |
+| Firefox | BackSpace ảo | keymap ghép sẵn |
+| Chrome / Chromium / Edge… | BackSpace ảo | `commit_string`, kể cả ký tự thường |
+| Còn lại (VS Code, terminal…) | BackSpace ảo | `commit_string` |
 
-Giai đoạn 3 ban đầu định viết một backend X11 riêng (XRecord + XTEST) để phủ
-Chrome, VS Code và các ứng dụng XWayland. Khi chạy thử mới thấy không cần: grab
-của OpenKey nhận được phím **kể cả** khi không có ô nhập `text-input-v3` nào,
-nên vấn đề chỉ nằm ở đầu ra. Vì vậy OpenKey xuất chữ theo hai đường:
+Với họ Chromium, ký tự thường đi đường text-input **không phải vì đường phím
+hỏng** — nó chạy tốt — mà để khỏi phải đổi đường: gõ một chữ có dấu vì thế chỉ
+tốn một lần chờ thay vì hai.
 
-- Ứng dụng có gửi surrounding text → `delete_surrounding_text` + `commit_string`
-- Còn lại → bàn phím ảo với keymap sinh động (kỹ thuật của `wtype`)
+### Ba hướng đã thử và đã chết
 
-Có một cái bẫy: một số ứng dụng (cosmic-term) **báo cáo** surrounding text nhưng
-lại **bỏ qua** `delete_surrounding_text`. Điều này hợp lý về bản chất — terminal
-không sở hữu văn bản, bộ soạn dòng của shell mới sở hữu. Không có cách nào biết
-trước qua giao thức, nên OpenKey **tự đo**: sau lần xoá đầu tiên trong một ứng
-dụng, nó đối chiếu độ dài văn bản mà ứng dụng báo về với độ dài đáng ra phải có.
-Nếu lệnh xoá bị bỏ qua thì chuyển sang phím BackSpace thật, và **ghi nhớ kết luận
-đó theo từng ứng dụng** để chỉ phải đo một lần.
+Ghi lại để khỏi ai đi lại:
+
+1. **Chọn cơ chế theo app-id đơn thuần** — không được. Trong *cùng* một app-id
+   `google-chrome`, ô nhập thường xử lý `delete_surrounding_text` đúng, còn ô chat
+   Facebook bỏ qua nó. Không có tín hiệu nào ở tầng giao thức tách được hai ô nằm
+   trong cùng một trình duyệt.
+2. **Dùng `delete_surrounding_text` cho mọi ứng dụng có surrounding text** — hỏng
+   VS Code và terminal: chúng **báo cáo** surrounding text nhưng **bỏ qua** yêu
+   cầu xoá, vì văn bản thuộc về bộ soạn dòng của shell / xterm.js chứ không phải
+   ô nhập của toolkit. Chữ dồn lại thành rác (`"sửa"` ra `"suaửa"`).
+3. **Đưa tất cả qua bàn phím ảo** — hỏng Chrome và terminal: chúng không nhận các
+   keycode tự chế trong keymap ghép. Firefox thì nhận, nên nhánh Firefox giữ lại
+   cách này.
+
+Ngoài ra `surrounding_text` **không đáng tin ở mọi nơi**: VS Code báo
+`" đây à õ ên"` trong khi màn hình hiện đúng `"đây là gõ trên"`. Vì vậy nó chỉ
+được dùng làm tín hiệu báo-xong cho họ Chromium.
+
+Keymap ghép sẵn có trần cứng: khoảng mã phím trống chỉ còn 249 chỗ (trên 767 là
+vượt `KEY_MAX` của evdev), danh sách hiện dùng 237. Muốn thêm — ví dụ khoảng
+`U+00A0..U+00FF` cho bảng mã TCVN3/VNI — thì phải giải phóng 95 chỗ của ASCII
+trước, bằng cách trả ký tự ASCII về phím thật thay vì cấp phím riêng.
 
 ## Build
 

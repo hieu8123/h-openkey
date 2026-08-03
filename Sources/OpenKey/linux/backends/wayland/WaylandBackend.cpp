@@ -8,7 +8,11 @@
 //
 //  Nguyen tac quan trong nhat: KHONG BAO GIO dung set_preedit_string. Preedit
 //  chinh la thu gay gach chan va nhan doi chu ma OpenKey sinh ra de loai bo.
-//  Chung ta chi dung delete_surrounding_text + commit_string.
+//
+//  Nguyen tac thu hai: chu di ra bang HAI duong (phim ao va text-input) va giua
+//  hai duong KHONG co gi bao dam thu tu. Vi vay moi thao tac xuat chu deu phai
+//  di qua hang doi o duoi, khong duoc goi thang. Xem phan "hang doi xuat chu".
+//  Duong nao dung cho ung dung nao: xem bang trong linux/README.md.
 //
 
 #include "WaylandBackend.h"
@@ -22,8 +26,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
+#include <deque>
+#include <initializer_list>
 #include <map>
+#include <set>
 #include <vector>
 
 #include "CharCodec.h"
@@ -64,6 +72,40 @@ constexpr uint32_t kEvdevBackspace = 14;
 // Wayland gui keycode evdev; engine (platforms/linux.h) dung keycode X11.
 constexpr uint32_t kEvdevToX11 = 8;
 
+std::string toLower(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        out.push_back(static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c));
+    }
+    return out;
+}
+
+bool appIdContains(const std::string& appId, std::initializer_list<const char*> names) {
+    if (appId.empty()) return false;
+    const std::string lower = toLower(appId);
+    for (const char* name : names) {
+        if (lower.find(name) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Firefox: da do duoc la chay dung khi go bang ban phim ao, con di duong
+// commit_string thi hong. Nen cho no dung chung duong voi ung dung XWayland.
+bool isFirefox(const std::string& appId) {
+    return appIdContains(appId, {"firefox"});
+}
+
+// Ho Chromium: day la noi dinh loi "o soan thao giau dinh dang nuot mat mot nua
+// lan sua" (o chat Facebook dung Lexical, va cac editor Draft.js/ProseMirror).
+// Cung la noi duy nhat bao surrounding text CHINH XAC de biet khi nao lan xoa da
+// an — VS Code bao sai (hien " đây à õ ên" trong khi man hinh dung), nen khong
+// dung co che hoan lai cho no duoc.
+bool isChromiumBrowser(const std::string& appId) {
+    return appIdContains(appId, {"chrome", "chromium", "edge", "brave", "vivaldi",
+                                 "opera"});
+}
+
 // Keycode X11 cua cac phim bo tro.
 bool isModifierKeycode(uint32_t keycode) {
     switch (keycode) {
@@ -103,6 +145,7 @@ public:
     void flush() override {
         if (_display) wl_display_flush(_display);
     }
+    void tick() override;
 
 private:
     // --- registry ---------------------------------------------------------
@@ -137,10 +180,43 @@ private:
     void regrabKeyboard();
     void sendBackspaces(uint32_t count);
 
-    // Duong xuat cho ung dung khong noi text-input-v3 (XWayland, Chrome,
-    // VS Code, phan lon terminal): nap mot keymap chi chua dung nhung ky tu
-    // can go, bam chung, roi tra keymap that ve ngay.
+    // --- hang doi xuat chu ------------------------------------------------
+    //
+    // Chu di ra bang HAI duong khac nhau: phim ao (BackSpace, chuyen tiep phim)
+    // va text-input (commit_string). Trong cung mot duong thi thu tu duoc bao
+    // dam, nhung GIUA hai duong thi khong — va do la nguon goc cua loi go nhanh
+    // ra sai chu. Nen moi thao tac deu xep hang o day va ra theo dung thu tu, va
+    // moi lan doi duong thi cho ung dung bao da xu ly xong cai truoc.
+    enum class Channel { Key, Text };
+    struct OutAction {
+        enum class Kind { Backspaces, TypeChars, CommitText, ForwardKey } kind;
+        uint32_t count = 0;    // Backspaces
+        std::u32string chars;  // TypeChars
+        std::string text;      // CommitText
+        uint32_t keycode = 0;  // ForwardKey
+        bool pressed = false;  // ForwardKey
+
+        Channel channel() const {
+            return kind == Kind::CommitText ? Channel::Text : Channel::Key;
+        }
+    };
+
+    void enqueue(OutAction action);
+    void drainQueue();
+    void runAction(const OutAction& action);
+    // Chi ung dung ho Chromium moi phai cho: chi o do moi co loi nuot mat mot
+    // nua lan sua, va cung chi o do surrounding_text moi dang tin lam tin hieu.
+    bool needsAck() const { return isChromiumBrowser(_appId); }
+    void onAppAcked();
+
+    // Go chu bang keymap ghep san: moi ky tu tieng Viet co mot phim rieng trong
+    // do, cu bam phim ay. Dung cho ung dung khong noi text-input-v3 (XWayland)
+    // va cho Firefox.
     void typeViaVirtualKeyboard(const std::u32string& out);
+    // Ky tu in duoc ma phim nay sinh ra theo keymap va trang thai bo tro hien
+    // tai, hoac rong neu no khong phai phim sinh chu. Dung xkb nen dung voi moi
+    // bo cuc ban phim.
+    std::string printableFor(uint32_t x11Keycode) const;
     bool uploadKeymap(zwp_virtual_keyboard_v1* vk, const std::string& keymap);
     bool modActive(const char* name) const;
 
@@ -178,6 +254,16 @@ private:
     // Grab tao luc khoi dong (khi chua co o nhap nao) bi bo di sau lan doi
     // focus dau tien, nen phai grab lai moi lan input method duoc kich hoat.
     bool _grabbedWhileActive = false;
+
+    // Hang doi xuat chu. Chi rong khi khong con gi cho ung dung xu ly.
+    std::deque<OutAction> _queue;
+    Channel _lastChannel = Channel::Key;
+    bool _awaitingAck = false;
+    std::chrono::steady_clock::time_point _ackDeadline;
+
+    // Phim da duoc chuyen thanh commit_string thi luc nha ra khong duoc gui,
+    // neu khong ung dung nhan release ma chua tung nhan press.
+    std::set<uint32_t> _committedKeys;
 
     uint32_t _serial = 0; // so su kien `done` da nhan, dung cho commit()
     uint32_t _lastTime = 0;
@@ -233,7 +319,11 @@ void WaylandBackend::onActivate(void* data, zwp_input_method_v2*) {
 
 void WaylandBackend::onDeactivate(void* data, zwp_input_method_v2*) {
     OK_LOG("deactivate");
-    static_cast<WaylandBackend*>(data)->_pending.active = false;
+    auto* self = static_cast<WaylandBackend*>(data);
+    // Mat o nhap thi day not hang doi cho o nhap cu, dung de chu roi sang o khac.
+    self->_awaitingAck = false;
+    self->drainQueue();
+    self->_pending.active = false;
 }
 
 void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*,
@@ -250,7 +340,9 @@ void WaylandBackend::onSurroundingText(void* data, zwp_input_method_v2*,
     OK_LOG("surrounding_text: truoc con tro=\"%s\" (%zu byte)",
            all.substr(from, at - from).c_str(), at);
 
-
+    // Ung dung vua bao van ban doi — bang chung no da xu ly xong thao tac truoc.
+    // Gio moi duoc doi sang duong kia.
+    self->onAppAcked();
 }
 
 void WaylandBackend::regrabKeyboard() {
@@ -493,9 +585,25 @@ void WaylandBackend::stop() {
     if (_display) { wl_display_flush(_display); wl_display_disconnect(_display); _display = nullptr; }
 }
 
-void WaylandBackend::forwardKey(const KeyEvent& ev) {
-    if (!_vk) return;
+std::string WaylandBackend::printableFor(uint32_t x11Keycode) const {
+    if (!_xkbState) return {};
 
+    // xkb dung cung he keycode voi X11 (evdev + 8), nen truyen thang vao duoc.
+    char buf[16];
+    const int n = xkb_state_key_get_utf8(_xkbState, x11Keycode, buf, sizeof(buf));
+    if (n <= 0 || n >= static_cast<int>(sizeof(buf))) return {};
+
+    // Enter tra ve "\r", Tab "\t", Esc "\x1b", BackSpace "\b". Nhung phim nay
+    // phai den ung dung dung dang phim: chung gui tin nhan, chuyen o, dong hop
+    // thoai — commit_string se lam mat het cac hanh vi do.
+    for (int i = 0; i < n; i++) {
+        const unsigned char c = static_cast<unsigned char>(buf[i]);
+        if (c < 0x20 || c == 0x7F) return {};
+    }
+    return std::string(buf, static_cast<size_t>(n));
+}
+
+void WaylandBackend::forwardKey(const KeyEvent& ev) {
     // Khong gui keycode cua phim bo tro. Giao thuc virtual-keyboard co request
     // `modifiers` rieng chinh vi compositor KHONG tu suy ra trang thai bo tro
     // tu cac phim ta bom vao. Gui ca hai duong la dem hai lan, va trang thai
@@ -505,9 +613,35 @@ void WaylandBackend::forwardKey(const KeyEvent& ev) {
         return;
     }
 
-    zwp_virtual_keyboard_v1_key(
-        _vk, _lastTime, ev.keycode - kEvdevToX11,
-        ev.pressed ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+    if (!ev.pressed) {
+        // Phai xet truoc moi dieu kien khac: neu lan bam da thanh commit_string
+        // thi lan nha tuyet doi khong duoc gui, du trong luc do focus co doi.
+        if (_committedKeys.erase(ev.keycode) > 0) {
+            return;
+        }
+    } else if (needsAck() && _current.active && !ev.ctrl && !ev.alt && !ev.super) {
+        // Ho Chromium: ky tu thuong cung di duong text-input.
+        //
+        // Khong phai vi duong phim hong o day — no chay tot — ma de KHONG PHAI
+        // DOI DUONG. Moi lan doi duong la mot lan phai cho ung dung bao lai; de
+        // ky tu thuong o duong phim thi go mot chu co dau phai cho hai lan, go
+        // nhanh la thay giat. Gom het ve mot duong thi chi con mot lan cho.
+        const std::string text = printableFor(ev.keycode);
+        if (!text.empty()) {
+            _committedKeys.insert(ev.keycode);
+            OutAction a;
+            a.kind = OutAction::Kind::CommitText;
+            a.text = text;
+            enqueue(std::move(a));
+            return;
+        }
+    }
+
+    OutAction a;
+    a.kind = OutAction::Kind::ForwardKey;
+    a.keycode = ev.keycode;
+    a.pressed = ev.pressed;
+    enqueue(std::move(a));
 }
 
 void WaylandBackend::sendBackspaces(uint32_t count) {
@@ -572,51 +706,125 @@ void WaylandBackend::typeViaVirtualKeyboard(const std::u32string& out) {
     }
 }
 
+// Cho toi da bao lau cho mot lan bao lai. Het han thi cu di tiep: thu tu van
+// dung vi hang doi ra tuan tu, chi la khong con bao dam ung dung da xu ly xong.
+constexpr auto kAckTimeout = std::chrono::milliseconds(60);
+
+void WaylandBackend::runAction(const OutAction& a) {
+    switch (a.kind) {
+        case OutAction::Kind::Backspaces:
+            sendBackspaces(a.count);
+            break;
+        case OutAction::Kind::TypeChars:
+            typeViaVirtualKeyboard(a.chars);
+            break;
+        case OutAction::Kind::CommitText:
+            if (_im) {
+                zwp_input_method_v2_commit_string(_im, a.text.c_str());
+                zwp_input_method_v2_commit(_im, _serial);
+            }
+            break;
+        case OutAction::Kind::ForwardKey:
+            if (_vk) {
+                zwp_virtual_keyboard_v1_key(
+                    _vk, _lastTime, a.keycode - kEvdevToX11,
+                    a.pressed ? WL_KEYBOARD_KEY_STATE_PRESSED
+                              : WL_KEYBOARD_KEY_STATE_RELEASED);
+            }
+            break;
+    }
+}
+
+void WaylandBackend::drainQueue() {
+    bool sentAnything = false;
+
+    while (!_queue.empty()) {
+        const OutAction& a = _queue.front();
+
+        // Doi duong thi phai cho ung dung xu ly xong cai truoc. Cung mot duong
+        // thi cu di tiep, vi thu tu trong mot duong da duoc bao dam san.
+        if (_awaitingAck && a.channel() != _lastChannel) {
+            break;
+        }
+
+        runAction(a);
+        _lastChannel = a.channel();
+        _queue.pop_front();
+        sentAnything = true;
+
+        if (needsAck()) {
+            _awaitingAck = true;
+            _ackDeadline = std::chrono::steady_clock::now() + kAckTimeout;
+        }
+    }
+
+    if (sentAnything) {
+        flush();
+    }
+}
+
+void WaylandBackend::enqueue(OutAction action) {
+    _queue.push_back(std::move(action));
+    drainQueue();
+}
+
+void WaylandBackend::onAppAcked() {
+    if (!_awaitingAck) return;
+    _awaitingAck = false;
+    drainQueue();
+}
+
+void WaylandBackend::tick() {
+    if (_awaitingAck && std::chrono::steady_clock::now() >= _ackDeadline) {
+        OK_LOG("het han cho ung dung bao lai, di tiep");
+        onAppAcked();
+    }
+}
+
 void WaylandBackend::sendResult(const DeleteRequest& del, const std::u32string& out) {
     if (!_im) return;
 
+    // Duong ban phim ao — mot kenh duy nhat, khong co gi de tron:
+    //  - ung dung khong mo phien text-input (XWayland)
+    //  - Firefox: da do duoc la go bang phim ao thi dung, con commit_string thi
+    //    hong. Firefox tu xu ly keycode cua keymap ghep san, cac ung dung khac
+    //    thi khong.
+    const bool viaVirtualKeyboard = !_current.active || isFirefox(_appId);
+
     OK_LOG("sendResult: xoa %u byte (%u phim) roi chen \"%s\" [%s]", del.utf8Bytes,
            del.keyPresses, utf8Encode(out).c_str(),
-           !_current.active ? "ban-phim-ao" : "backspace+commit");
+           viaVirtualKeyboard ? "ban-phim-ao" : "backspace+commit");
 
-    // NGUYEN TAC: khong bao gio tron hai co che trong cung mot lan xuat.
-    //
-    // Phim BackSpace ao di qua dinh tuyen ban phim, con commit_string di qua
-    // text-input. Khong co gi bao dam ung dung xu ly chung dung thu tu, va khi
-    // sai thu tu thi ra dung nhung loi da thay khi chay that: go "con"+f ra
-    // "conon" (xoa khong an) hoac go "nefu" ra "ieu" (xoa lo mat chu dau).
-    //
-    // Vi vay: co surrounding text thi ca xoa lan chen deu qua text-input;
-    // khong co thi ca hai deu qua ban phim ao.
-    // Khong co o nhap text-input-v3 nao (XWayland: Chrome, VS Code). Chi con
-    // duong ban phim ao.
-    if (!_current.active) {
-        if (del.keyPresses > 0) sendBackspaces(del.keyPresses);
-        typeViaVirtualKeyboard(out);
-        flush();
+    if (del.keyPresses > 0) {
+        OutAction bs;
+        bs.kind = OutAction::Kind::Backspaces;
+        bs.count = del.keyPresses;
+        enqueue(std::move(bs));
+    }
+
+    if (out.empty()) {
         return;
     }
 
-    // Xoa bang phim BackSpace that, cho MOI ung dung.
-    //
-    // Truoc day o day dung delete_surrounding_text khi ung dung co ve ho tro,
-    // roi them ca mot co che tu do de biet ung dung nao that su xu ly. Ca hai
-    // deu sai huong: cosmic-term BAO CAO surrounding text nhung BO QUA yeu cau
-    // xoa (hop ly — bo soan dong cua shell moi so huu van ban), va phep do thi
-    // gan vao app-id, ma app-id bao ve khong luon khop voi ung dung dang thuc
-    // su nhan chu.
-    //
-    // Phim BackSpace that thi chay o moi noi: terminal buoc phai dung no, con
-    // Firefox va editor cung nhan no binh thuong. delete_surrounding_text chi
-    // gon hon ve hinh thuc chu khong doi lay duoc gi.
-    if (del.keyPresses > 0) {
-        sendBackspaces(del.keyPresses);
+    OutAction ins;
+    if (viaVirtualKeyboard) {
+        ins.kind = OutAction::Kind::TypeChars;
+        ins.chars = out;
+    } else {
+        // EDGE CASE — o soan thao giau dinh dang tren web (o chat Facebook dung
+        // Lexical, Draft.js, ProseMirror...).
+        //
+        // Gui BackSpace va commit_string trong CUNG mot luot thi mot trong hai bi
+        // nuot, khong doan truoc duoc ben nao. Da do duoc ca hai chieu trong cung
+        // o chat Facebook:
+        //   - mat phan xoa:  "ting vie" + (xoa 1, chen "ê") -> "ting vieê"
+        //   - mat phan chen: "tie"      + (xoa 1, chen "ê") -> "ti"
+        // Tach rieng ra thi tung cai deu chay. Hang doi lo viec tach: no giu lan
+        // chen lai cho toi khi ung dung bao da xoa xong.
+        ins.kind = OutAction::Kind::CommitText;
+        ins.text = utf8Encode(out);
     }
-    if (!out.empty()) {
-        zwp_input_method_v2_commit_string(_im, utf8Encode(out).c_str());
-    }
-    zwp_input_method_v2_commit(_im, _serial);
-    flush();
+    enqueue(std::move(ins));
 }
 
 } // namespace

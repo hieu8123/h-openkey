@@ -118,6 +118,14 @@ int main(int argc, char** argv) {
     QObject::connect(&notifier, &QSocketNotifier::activated, &app,
                      [&backend] { backend->dispatchEvents(); });
 
+    // Nhip cho hang doi xuat chu cua backend. Backend Wayland xep hang cac thao
+    // tac va cho ung dung bao da xu ly xong; neu ung dung im lang thi nhip nay la
+    // han chot de day tiep, khong de chu ket lai.
+    QTimer outputTick;
+    outputTick.setInterval(5);
+    QObject::connect(&outputTick, &QTimer::timeout, &app, [&backend] { backend->tick(); });
+    outputTick.start();
+
     openkey::TrayIcon tray(config, core);
 
     // Smart Switch Key co the tu doi ngon ngu khi chuyen ung dung; bieu tuong
