@@ -2,7 +2,7 @@
 
 > Từ đây trở đi, phần Linux (`h-openkey`) đi đường riêng và **không còn theo dõi
 > repo gốc** nữa. Các mục dưới mốc "H-OpenKey (Linux)" là của bản fork; phần
-> lịch sử của OpenKey gốc giữ nguyên bên dưới để ghi công.
+> lịch sử của OpenKey gốc giữ nguyên bên dưới để ghi nhận nguồn.
 
 ## H-OpenKey (Linux)
 

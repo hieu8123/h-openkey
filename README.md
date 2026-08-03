@@ -29,7 +29,7 @@ Bản Linux mang tên `h-openkey` để không lẫn với bản gốc nếu b�
 - [Tính năng](#-tính-năng)
 - [Tìm hiểu sâu](#-tìm-hiểu-sâu)
 - [Đóng góp](#-đóng-góp)
-- [Ghi công](#-ghi-công)
+- [Credits](#-credits)
 - [Giấy phép](#-giấy-phép)
 
 ## 📖 Bối cảnh
@@ -215,7 +215,7 @@ Khi báo lỗi, kèm giúp:
 2. Ứng dụng gặp lỗi, và chuỗi phím đã gõ
 3. File nhật ký — xem [Báo lỗi gõ](#-báo-lỗi-gõ) ở trên
 
-## 🙏 Ghi công
+## 🙏 Credits
 
 Bộ gõ này sử dụng engine của [**OpenKey**](https://github.com/tuyenvm/OpenKey), tác
 giả [**Tuyên Mai**](https://github.com/tuyenvm). Toàn bộ công lao thiết kế bộ gõ,
