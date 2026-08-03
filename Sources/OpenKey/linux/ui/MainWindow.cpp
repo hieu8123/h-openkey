@@ -367,7 +367,7 @@ QWidget* MainWindow::buildSystemTab() {
 }
 
 // Loi go thuong chi tai hien duoc tren may nguoi dung, va gan het la loi thu tu
-// hoac dua tranh — doan mo khong ra. Nut nay de ho tu ghi lai dung luc loi xay
+// race condition — doan mo khong ra. Nut nay de ho tu ghi lai dung luc loi xay
 // ra roi gui file log di.
 QWidget* MainWindow::buildDebugGroup(QWidget* parent) {
     auto* group = new QGroupBox(tr("Chẩn đoán lỗi gõ"), parent);

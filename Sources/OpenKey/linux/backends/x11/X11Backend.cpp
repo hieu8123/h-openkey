@@ -461,7 +461,7 @@ void X11Backend::typeCodePoint(char32_t codePoint) {
     }
 
     // Duong lui cho ky tu ngoai bang (bang ma cu TCVN3, VNI-Windows...). Van
-    // phai doi ban do phim nen van co dua tranh nhu tren, nhung cac ky tu nay
+    // phai doi ban do phim nen van con race condition nhu tren, nhung cac ky tu nay
     // hiem, va luan phien qua vai ma trong de giam va cham.
     if (_nextSpare >= _spareKeycodes.size()) {
         return;

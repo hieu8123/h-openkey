@@ -1,9 +1,9 @@
 # H-OpenKey
 
 [![Giấy phép](https://img.shields.io/badge/gi%E1%BA%A5y%20ph%C3%A9p-GPL--3.0-blue.svg)](LICENSE)
-[![Phiên bản](https://img.shields.io/badge/phi%C3%AAn%20b%E1%BA%A3n-1.1-brightgreen.svg)](CHANGELOG.md)
+[![Phiên bản](https://img.shields.io/badge/phi%C3%AAn%20b%E1%BA%A3n-1.2-brightgreen.svg)](CHANGELOG.md)
 [![Nền tảng](https://img.shields.io/badge/n%E1%BB%81n%20t%E1%BA%A3ng-Linux-lightgrey.svg)](#-tương-thích)
-[![Wayland](https://img.shields.io/badge/Wayland-input--method--v2-orange.svg)](Sources/OpenKey/linux/README.md)
+[![Backend](https://img.shields.io/badge/backend-evdev%20%7C%20input--method--v2-orange.svg)](Sources/OpenKey/linux/README.md)
 [![Standard Readme](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
 
 > Bộ gõ tiếng Việt cho Linux, sử dụng engine OpenKey của Tuyên Mai
@@ -13,8 +13,9 @@ engine xử lý tiếng Việt được dùng lại **nguyên vẹn, không sử
 cách gõ, kiểu gõ và bảng mã giống hệt bản macOS và Windows — ai quen OpenKey rồi
 thì sang Linux không phải học lại gì.
 
-Bộ gõ chạy thẳng trên Wayland qua `zwp_input_method_v2`, **không cần ibus hay
-fcitx5**, và không dùng vùng tiền soạn nên **không có gạch chân dưới chữ đang gõ**.
+Bộ gõ chạy thẳng, **không cần ibus hay fcitx5**, và không dùng vùng tiền soạn nên
+**không có gạch chân dưới chữ đang gõ**. Trên X11 nó chặn phím ở tầng kernel
+(`EVIOCGRAB`); trên Wayland thì qua `zwp_input_method_v2`.
 
 Bản Linux mang tên `h-openkey` để không lẫn với bản gốc nếu bạn dùng cả hai.
 
@@ -22,6 +23,7 @@ Bản Linux mang tên `h-openkey` để không lẫn với bản gốc nếu b�
 
 - [Bối cảnh](#-bối-cảnh)
 - [Tương thích](#-tương-thích)
+- [Báo lỗi gõ](#-báo-lỗi-gõ)
 - [Cài đặt](#-cài-đặt)
 - [Sử dụng](#-sử-dụng)
 - [Tính năng](#-tính-năng)
@@ -52,8 +54,8 @@ Linux mới có. Chi tiết nằm ở [tài liệu kỹ thuật](Sources/OpenKey
 
 | Môi trường | Trạng thái |
 | --- | --- |
-| 🟢 Pop!_OS (COSMIC) | Ổn định, đã kiểm chứng trên từng ứng dụng |
-| 🟢 Bất kỳ phiên X11/Xorg nào | Chạy qua backend evdev + XTEST, đã kiểm chứng trên Zorin OS |
+| 🟢 Bất kỳ phiên X11/Xorg nào | Chạy tốt nhất. Backend evdev + XTEST, đã kiểm chứng trên Zorin OS |
+| 🟡 Pop!_OS (COSMIC) | Gõ được, nhưng **hỏng menu chuột phải** — bug của cosmic-comp, xem bên dưới |
 | 🟡 KDE Plasma, sway, wlroots | Nhiều khả năng chạy, chưa ai thử |
 | 🔴 GNOME — phiên Wayland | **Không** chạy trên Wayland, xem bên dưới |
 
@@ -62,12 +64,34 @@ Linux mới có. Chi tiết nằm ở [tài liệu kỹ thuật](Sources/OpenKey
 > `input-method-v2` cho bộ gõ ngoài. Cách xử lý: đăng nhập bằng phiên **Xorg**
 > (chọn ở màn hình đăng nhập), khi đó backend X11 chạy bình thường.
 
+### Hai giới hạn của Wayland (không sửa được từ phía bộ gõ)
+
+**1. Trên COSMIC: menu chuột phải của dock/panel không mở được.**
+Để nuốt phím, bộ gõ buộc phải gọi `zwp_input_method_v2_grab_keyboard` và giữ grab
+đó cả phiên. cosmic-comp lại từ chối **mọi** popup grab (menu chuột phải của
+dock, panel, và menu ứng dụng đều là XDG popup) khi trên seat đang có bất kỳ
+keyboard grab nào — [cosmic-comp#1763](https://github.com/pop-os/cosmic-comp/issues/1763),
+[#1211](https://github.com/pop-os/cosmic-comp/issues/1211). Hai PR sửa
+([#1923](https://github.com/pop-os/cosmic-comp/pull/1923),
+[#2243](https://github.com/pop-os/cosmic-comp/pull/2243)) **đều đã đóng mà không
+merge**, nên bản cosmic-comp mới nhất vẫn dính. fcitx5 và ibus bị y hệt. Không có
+cách nào sửa từ phía OpenKey: muốn chặn phím thì phải giữ grab, mà giữ grab thì
+compositor chặn menu.
+
+**2. Trên mọi compositor Wayland: phím tắt đổi chế độ chỉ chạy khi con trỏ đang ở
+ô nhập văn bản.** Giao thức `input-method-v2` chỉ chuyển phím tới bộ gõ khi đang
+có text input được kích hoạt. Lúc focus nằm ở dock/panel hay cửa sổ không có ô
+nhập, bộ gõ **không nhận được phím nào**, nên `Ctrl+Shift` không có tác dụng ở đó.
+
+Cả hai đều **không xảy ra trên X11**, vì backend X11 chặn phím ở tầng kernel
+(`EVIOCGRAB`) chứ không qua giao thức input method của compositor.
+
 ### Backend X11 chặn phím ở tầng kernel
 
 Trên X11, bộ gõ **không** dùng XRecord (chỉ quan sát được phím, không chặn được,
 nên phím gốc lọt tới ứng dụng trước khi kịp sửa). Thay vào đó nó chặn thẳng ở
 kernel bằng `EVIOCGRAB` trên `/dev/input/event*`, nhờ vậy phím gốc không bao giờ
-lọt ra ngoài và không còn cuộc đua nào khi gõ nhanh.
+lọt ra ngoài và hết sạch race condition khi gõ nhanh.
 
 Đổi lại, tài khoản của bạn phải thuộc nhóm `input`. Script cài tự lo việc này;
 làm tay thì:
@@ -99,8 +123,8 @@ Facebook và vài ô nhập trên web.
 
 ## 🐞 Báo lỗi gõ
 
-Lỗi gõ hầu hết là lỗi thứ tự hoặc đua tranh, chỉ tái hiện trên máy người dùng —
-đoán mò không ra. Bảng điều khiển có sẵn công cụ ghi lại:
+Lỗi gõ hầu hết là race condition hoặc lỗi thứ tự sự kiện, chỉ tái hiện trên máy
+người dùng — đoán mò không ra. Bảng điều khiển có sẵn công cụ ghi lại:
 
 1. Mở bảng điều khiển → tab **Hệ thống** → mục **Chẩn đoán lỗi gõ**
 2. Bấm **Bắt đầu ghi nhật ký**
@@ -189,7 +213,7 @@ Khi báo lỗi, kèm giúp:
 
 1. Distro và compositor (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`)
 2. Ứng dụng gặp lỗi, và chuỗi phím đã gõ
-3. Nhật ký `OPENKEY_DEBUG=1 h-openkey`
+3. File nhật ký — xem [Báo lỗi gõ](#-báo-lỗi-gõ) ở trên
 
 ## 🙏 Ghi công
 

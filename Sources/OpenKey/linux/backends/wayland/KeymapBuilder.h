@@ -11,7 +11,7 @@
 //  bat dong bo, nen cac phim ta bom vao bi giai ma bang keymap sai — go "a"
 //  roi dau se ra chu khac han.
 //
-//  Ghep san thi khong bao gio phai doi keymap, nen khong con dua tranh nao.
+//  Ghep san thi khong bao gio phai doi keymap, nen het race condition.
 //  Doi lai, cac ma them vao deu tren 255 — X11 chi ho tro toi 255 nen cach nay
 //  khong voi tay duoc toi ung dung XWayland; nhung khoang 8..255 chi con dung
 //  MOT ma trong nen cung khong co lua chon khac.

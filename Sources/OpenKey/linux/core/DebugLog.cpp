@@ -106,7 +106,7 @@ void debugLog(const char* tag, const char* format, ...) {
         std::fprintf(stderr, "[%s] %s\n", tag, message);
     }
     if (g_file) {
-        // Dau thoi gian den mili giay: phan lon loi go la loi thu tu/dua tranh,
+        // Dau thoi gian den mili giay: phan lon loi go la race condition / loi thu tu,
         // khong co moc thoi gian thi khong lan ra duoc.
         struct timespec ts {};
         clock_gettime(CLOCK_REALTIME, &ts);

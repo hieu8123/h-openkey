@@ -11,7 +11,7 @@
 **Backend X11 viết lại: chặn phím ở tầng kernel, hết mất chữ khi gõ nhanh.**
 
 XRecord chỉ *quan sát* được phím chứ không chặn được, nên phím gốc luôn tới ứng
-dụng trước rồi bộ gõ mới chạy theo sửa — không bao giờ hết đua tranh. Nay chặn
+dụng trước rồi bộ gõ mới chạy theo sửa — race condition là không tránh khỏi. Nay chặn
 thẳng ở kernel bằng `EVIOCGRAB`, phím gốc không còn lọt ra ngoài. Cần tài khoản
 thuộc nhóm `input`; script cài tự lo.
 
