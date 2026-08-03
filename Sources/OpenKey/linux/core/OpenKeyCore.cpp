@@ -106,6 +106,14 @@ void OpenKeyCore::toggleLanguage() {
     vLanguage = vLanguage == 1 ? 0 : 1;
     resetTypingState();
     rememberCurrentApp();
+
+    // Phai bao cho giao dien ve lai, neu khong bieu tuong khay dung im va nguoi
+    // dung tuong phim tat khong an — trong khi che do da doi that. Duong bam
+    // bang chuot o khay tu goi refresh nen khong lo loi nay, con duong phim tat
+    // thi phai bao o day.
+    if (onStateChanged) {
+        onStateChanged();
+    }
 }
 
 void OpenKeyCore::rememberCurrentApp() {
@@ -159,6 +167,17 @@ bool OpenKeyCore::matchSwitchKey(const KeyEvent& ev) const {
 }
 
 bool OpenKeyCore::handleModifierOnlySwitchKey(const KeyEvent& ev) {
+    if (coreDebug() && isModifierKey(ev.keycode)) {
+        debugLog("switch",
+                 "keycode=%u pressed=%d ctrl=%d alt=%d shift=%d super=%d | "
+                 "status=%d want(ctrl=%d alt=%d shift=%d super=%d key=%d) armed=%d",
+                 ev.keycode, (int)ev.pressed, (int)ev.ctrl, (int)ev.alt,
+                 (int)ev.shift, (int)ev.super, vSwitchKeyStatus,
+                 HAS_CONTROL(vSwitchKeyStatus), HAS_OPTION(vSwitchKeyStatus),
+                 HAS_SHIFT(vSwitchKeyStatus), HAS_COMMAND(vSwitchKeyStatus),
+                 GET_SWITCH_KEY(vSwitchKeyStatus), (int)_switchKeyArmed);
+    }
+
     if (GET_SWITCH_KEY(vSwitchKeyStatus) != kSwitchKeyModifiersOnly) {
         return false;
     }

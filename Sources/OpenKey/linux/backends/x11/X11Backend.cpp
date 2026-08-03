@@ -28,6 +28,20 @@ namespace {
 
 #define X11_LOG(...) debugLog("x11", __VA_ARGS__)
 
+// Keycode X11 cua cac phim bo tro.
+bool isModifierKeycode(uint32_t keycode) {
+    switch (keycode) {
+        case 50: case 62:   // Shift
+        case 37: case 105:  // Control
+        case 64: case 108:  // Alt
+        case 133: case 134: // Super
+        case 66: case 77: case 78: // Caps/Num/Scroll Lock
+            return true;
+        default:
+            return false;
+    }
+}
+
 class X11Backend final : public IBackend {
 public:
     ~X11Backend() override { stop(); }
@@ -85,6 +99,10 @@ private:
 
     // Dem nhip de do lai /dev/input mot giay mot lan, khong phai moi 5ms.
     unsigned int _ticksSinceScan = 0;
+
+    // Dem nhip de hoi cua so dang focus, va ten cua so lan hoi truoc.
+    unsigned int _ticksSinceFocus = 0;
+    std::string _appId;
 
     // Chu cho gui o nhip sau. Xem sendResult() de biet vi sao phai tach ra.
     std::u32string _pendingText;
@@ -183,6 +201,22 @@ void X11Backend::tick() {
     // Chu cua lan sua truoc da doi mot nhip, gio moi cho ra — tach han khoi
     // cum phim BackSpace vua gui.
     flushPendingText();
+
+    // X11 khong co su kien bao "cua so focus vua doi" cho ung dung ngoai, nen
+    // phai tu hoi. Khong hoi thi Smart Switch Key khong chay va bo dem go
+    // khong duoc xoa khi doi ung dung — go tiep o ung dung moi se xoa sai so
+    // ky tu. Hoi moi ~150ms la du nhanh voi mat nguoi ma khong ton gi.
+    if (++_ticksSinceFocus >= 30) {
+        _ticksSinceFocus = 0;
+        const std::string appId = focusedAppId();
+        if (appId != _appId) {
+            _appId = appId;
+            X11_LOG("focus doi sang: %s", appId.c_str());
+            if (_focusHandler) {
+                _focusHandler(appId);
+            }
+        }
+    }
 
     // Do lai /dev/input mot giay mot lan de bat ban phim vua duoc cam vao.
     // tick() duoc goi rat day (5ms), nen phai tu han che lai.
@@ -349,7 +383,15 @@ void X11Backend::handleKey(const EvdevKeyEvent& raw) {
     ev.alt = raw.alt;
     ev.super = raw.super;
 
-    if (_handler(ev) == KeyVerdict::Forward) {
+    const bool forward = _handler(ev) == KeyVerdict::Forward;
+
+    // Phim bo tro thi LUON phai chuyen tiep, du engine bao nuot. Phim tat doi
+    // che do mac dinh (Ctrl+Shift) chi gom phim bo tro nen duoc kich hoat luc
+    // NHA ra, va engine nuot dung lan nha do. Truoc day XRecord khong chan duoc
+    // phim nen nuot cung vo hai, con bay gio nuot la that: lan bam da gui roi ma
+    // lan nha khong toi X, nen X tuong Shift bi giu mai — go tiep ra chu hoa va
+    // loan phim tat.
+    if (forward || isModifierKeycode(ev.keycode)) {
         forwardKey(ev);
     }
     flush();

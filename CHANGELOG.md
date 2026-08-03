@@ -34,6 +34,24 @@ Sáu lỗi tìm được và sửa, tất cả đều đo bằng `xev` chứ kh�
   không được chặn nên mất hẳn tiếng Việt. Nay dọn fd chết và quét lại mỗi giây.
 - **X tự lặp phím** sinh ký tự mà engine không biết, làm lệch bộ đệm đếm xoá.
 
+Ba lỗi nữa quanh việc chuyển tiếng Việt / tiếng Anh:
+
+- **`Ctrl+Shift` làm kẹt Shift.** Phím tắt chỉ gồm phím bổ trợ được kích hoạt lúc
+  *nhả* phím, và engine nuốt đúng lần nhả đó. Trước đây XRecord không chặn được
+  phím nên nuốt cũng vô hại; nay chặn thật nên lệnh bấm đã gửi mà lệnh nhả không
+  tới X — X tưởng Shift bị giữ mãi, gõ tiếp ra chữ hoa và loạn phím tắt. Nay phím
+  bổ trợ luôn được chuyển tiếp bất kể engine phán gì.
+- **Phím tắt đổi chế độ nhưng giao diện không biết.** Chế độ đã đổi thật nhưng
+  biểu tượng khay đứng im nên tưởng phím tắt hỏng. Đường bấm bằng chuột tự vẽ lại
+  nên không dính; nay `toggleLanguage()` tự báo cho giao diện.
+- **Smart Switch Key không chạy trên X11.** Backend khai `hasAppId = true` nhưng
+  chưa bao giờ báo cửa sổ focus đổi, nên tính năng nhớ chế độ theo ứng dụng nằm
+  im và bộ đệm gõ không được xoá khi đổi ứng dụng (gõ tiếp ở ứng dụng mới sẽ xoá
+  sai số ký tự). Nay tự hỏi cửa sổ đang focus mỗi ~150ms.
+
+Đổi: phím tắt mặc định thành **Ctrl + Shift** (chỉ phím bổ trợ) cho khớp README;
+trước đó code để `Alt + Z` trong khi tài liệu ghi `Ctrl + Shift`.
+
 Thêm: nút **bắt đầu/dừng ghi nhật ký** trong tab Hệ thống, ghi ra
 `~/.local/share/h-openkey/debug.log` để gửi kèm khi báo lỗi.
 
