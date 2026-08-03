@@ -68,9 +68,30 @@ check_session() {
                 ;;
         esac
     elif [ -n "${DISPLAY:-}" ]; then
-        say "Phiên X11: dùng backend XRecord + XTEST"
+        say "Phiên X11: dùng backend evdev + XTEST"
     else
         die "Không thấy WAYLAND_DISPLAY lẫn DISPLAY. Hãy chạy trong phiên đồ hoạ."
+    fi
+}
+
+# Backend X11 chặn phím ngay ở kernel bằng EVIOCGRAB — cách duy nhất để phím gốc
+# không lọt tới ứng dụng trước khi bộ gõ kịp sửa. Muốn vậy phải đọc được
+# /dev/input/event*, tức là phải thuộc nhóm `input`. Cấp một lần, dùng mãi.
+ensure_input_group() {
+    [ -n "${WAYLAND_DISPLAY:-}" ] && return 0
+
+    if id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+        say "Đã thuộc nhóm 'input', đủ quyền chặn bàn phím"
+        return 0
+    fi
+
+    say "Thêm '$USER' vào nhóm 'input' để chặn được bàn phím (cần mật khẩu sudo)"
+    if sudo usermod -aG input "$USER"; then
+        NEED_RELOGIN=1
+        warn "Phải ĐĂNG XUẤT rồi đăng nhập lại thì quyền mới có hiệu lực."
+    else
+        warn "Không thêm được vào nhóm 'input'. Hãy tự chạy:"
+        warn "    sudo usermod -aG input $USER"
     fi
 }
 
@@ -203,6 +224,7 @@ handle_other_ime() {
 main() {
     say "OpenKey cho Linux — bộ gõ tiếng Việt"
     check_session
+    ensure_input_group
     if [ "$SKIP_DEPS" -eq 1 ]; then
         say "Bỏ qua bước cài phụ thuộc theo yêu cầu"
     else
@@ -221,6 +243,12 @@ main() {
     systemctl --user enable --now h-openkey.service
 
     sleep 2
+    if [ "${NEED_RELOGIN:-0}" -eq 1 ]; then
+        say "Xong phần cài đặt."
+        warn "CÒN MỘT BƯỚC: đăng xuất rồi đăng nhập lại để quyền nhóm 'input'"
+        warn "có hiệu lực. Trước đó OpenKey chưa gõ được tiếng Việt."
+        return 0
+    fi
     if systemctl --user is-active --quiet h-openkey.service; then
         say "Xong. OpenKey đang chạy, biểu tượng \"V\" ở khay hệ thống."
         say "Chuột phải vào biểu tượng để mở bảng điều khiển."

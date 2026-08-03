@@ -15,6 +15,7 @@
 
 #include "AppState.h"
 #include "CharCodec.h"
+#include "DebugLog.h"
 #include "Engine.h"
 #include "SmartSwitchKey.h"
 
@@ -65,13 +66,14 @@ bool isNonTextKey(uint32_t keycode) {
     }
 }
 
-bool coreDebug() {
-    static const bool on = [] {
-        const char* v = std::getenv("OPENKEY_DEBUG");
-        return v && *v && std::strcmp(v, "0") != 0;
-    }();
-    return on;
-}
+bool coreDebug() { return debugLoggingEnabled(); }
+
+// Nguoi go tieng Viet van hay dung lai vai giay giua hai tu de nghi — nguong
+// qua ngan (vd 1.5s) se hieu nham thanh doi ngu canh va xoa mat bo dem dang
+// go dot, lam mat luon dau vua go thay vi thuc su bi "go nhanh qua an chu".
+// Chi coi la doi ngu canh (chuyen tab, dan van ban...) khi khoang lang dai
+// hon han mot lan dung suy nghi thong thuong.
+constexpr auto kIdleResetThreshold = std::chrono::milliseconds(4000);
 
 } // namespace
 
@@ -227,6 +229,13 @@ KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
         return KeyVerdict::Forward;
     }
 
+    const auto now = std::chrono::steady_clock::now();
+    if (_hasLastKeyTime && now - _lastKeyTime > kIdleResetThreshold) {
+        resetTypingState();
+    }
+    _lastKeyTime = now;
+    _hasLastKeyTime = true;
+
     // Phai xet ca luc nha phim, vi phim tat chi gom phim bo tro duoc kich hoat
     // khi nha ra chu khong phai khi bam xuong.
     if (handleModifierOnlySwitchKey(ev)) {
@@ -257,12 +266,12 @@ KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
                     ev.otherControlKey());
 
     if (coreDebug()) {
-        std::fprintf(stderr,
-                     "[core] keycode=%u caps=%u ctrl=%d code=%u ext=%u bs=%u nc=%u "
-                     "lang=%d input=%d\n",
-                     ev.keycode, capsStatus, (int)ev.otherControlKey(), _hook->code,
-                     _hook->extCode, _hook->backspaceCount, _hook->newCharCount,
-                     vLanguage, vInputType);
+        debugLog("core",
+                 "keycode=%u caps=%u ctrl=%d code=%u ext=%u bs=%u nc=%u "
+                 "lang=%d input=%d",
+                 ev.keycode, capsStatus, (int)ev.otherControlKey(), _hook->code,
+                 _hook->extCode, _hook->backspaceCount, _hook->newCharCount,
+                 vLanguage, vInputType);
     }
 
     if (_hook->code == vDoNothing) {

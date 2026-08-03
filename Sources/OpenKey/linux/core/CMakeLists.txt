@@ -3,6 +3,7 @@
 add_library(openkey_core STATIC
     AppState.cpp
     CharCodec.cpp
+    DebugLog.cpp
     OpenKeyCore.cpp
     BackendFactory.cpp
     Config.cpp

@@ -53,13 +53,28 @@ Linux mới có. Chi tiết nằm ở [tài liệu kỹ thuật](Sources/OpenKey
 | Môi trường | Trạng thái |
 | --- | --- |
 | 🟢 Pop!_OS (COSMIC) | Ổn định, đã kiểm chứng trên từng ứng dụng |
+| 🟢 Bất kỳ phiên X11/Xorg nào | Chạy qua backend evdev + XTEST, đã kiểm chứng trên Zorin OS |
 | 🟡 KDE Plasma, sway, wlroots | Nhiều khả năng chạy, chưa ai thử |
-| 🟡 Ubuntu — phiên "Ubuntu on Xorg" | Nhiều khả năng chạy qua backend X11, chưa ai thử |
-| 🔴 Ubuntu — phiên Wayland mặc định (GNOME) | Nhiều khả năng **không** chạy, xem bên dưới |
+| 🔴 GNOME — phiên Wayland | **Không** chạy trên Wayland, xem bên dưới |
 
 > [!WARNING]
-> **Mới chỉ Pop!_OS là ổn định 100%.** Ubuntu và các distro khác thì chưa — không
-> phải vì code từ chối chúng, mà vì chưa được kiểm chứng thực tế.
+> Trên **phiên Wayland của GNOME** thì không gõ được, vì Mutter không cấp
+> `input-method-v2` cho bộ gõ ngoài. Cách xử lý: đăng nhập bằng phiên **Xorg**
+> (chọn ở màn hình đăng nhập), khi đó backend X11 chạy bình thường.
+
+### Backend X11 chặn phím ở tầng kernel
+
+Trên X11, bộ gõ **không** dùng XRecord (chỉ quan sát được phím, không chặn được,
+nên phím gốc lọt tới ứng dụng trước khi kịp sửa). Thay vào đó nó chặn thẳng ở
+kernel bằng `EVIOCGRAB` trên `/dev/input/event*`, nhờ vậy phím gốc không bao giờ
+lọt ra ngoài và không còn cuộc đua nào khi gõ nhanh.
+
+Đổi lại, tài khoản của bạn phải thuộc nhóm `input`. Script cài tự lo việc này;
+làm tay thì:
+
+```sh
+sudo usermod -aG input $USER   # rồi ĐĂNG XUẤT và đăng nhập lại
+```
 
 Backend Wayland cần hai giao thức, thiếu một cái là không khởi động được:
 
@@ -81,6 +96,20 @@ Thấy dòng `khong theo doi duoc cua so dang focus` nghĩa là compositor khôn
 biết cửa sổ nào đang focus. Khi đó Smart Switch Key tắt, và các cách xử lý riêng
 cho Firefox với Chrome cũng không kích hoạt — chữ có thể ra sai trong ô chat
 Facebook và vài ô nhập trên web.
+
+## 🐞 Báo lỗi gõ
+
+Lỗi gõ hầu hết là lỗi thứ tự hoặc đua tranh, chỉ tái hiện trên máy người dùng —
+đoán mò không ra. Bảng điều khiển có sẵn công cụ ghi lại:
+
+1. Mở bảng điều khiển → tab **Hệ thống** → mục **Chẩn đoán lỗi gõ**
+2. Bấm **Bắt đầu ghi nhật ký**
+3. Gõ lại cho đúng lỗi tái hiện
+4. Bấm **Dừng ghi nhật ký**, rồi **Mở thư mục chứa log**
+5. Gửi kèm file `~/.local/share/h-openkey/debug.log` vào issue
+
+File log chỉ chứa mã phím và chữ mà bộ gõ sinh ra, không gửi đi đâu cả — bạn tự
+xem trước rồi mới gửi.
 
 ## 📦 Cài đặt
 

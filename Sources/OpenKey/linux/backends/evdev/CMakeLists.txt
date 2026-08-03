@@ -1,0 +1,4 @@
+add_library(openkey_evdev STATIC EvdevKeyboard.cpp)
+target_include_directories(openkey_evdev PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(openkey_evdev PUBLIC openkey_core)
+set_target_properties(openkey_evdev PROPERTIES POSITION_INDEPENDENT_CODE ON)

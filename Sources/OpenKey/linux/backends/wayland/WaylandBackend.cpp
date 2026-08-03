@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "CharCodec.h"
+#include "DebugLog.h"
 #include "KeymapBuilder.h"
 #include "ToplevelWatcher.h"
 #include "cosmic-toplevel-info-unstable-v1-client-protocol.h"
@@ -46,24 +47,10 @@
 namespace openkey {
 namespace {
 
-// Bat bang OPENKEY_DEBUG=1. Chan doan tren Wayland rat kho neu khong nhin duoc
-// ung dung nao cho surrounding text va chung ta da gui gi xuong.
-bool debugEnabled() {
-    static const bool on = [] {
-        const char* v = std::getenv("OPENKEY_DEBUG");
-        return v && *v && std::strcmp(v, "0") != 0;
-    }();
-    return on;
-}
-
-#define OK_LOG(...)                              \
-    do {                                         \
-        if (debugEnabled()) {                    \
-            std::fprintf(stderr, "[openkey] ");  \
-            std::fprintf(stderr, __VA_ARGS__);   \
-            std::fputc('\n', stderr);            \
-        }                                        \
-    } while (0)
+// Bat bang OPENKEY_DEBUG=1 hoac bang nut trong bang dieu khien. Chan doan tren
+// Wayland rat kho neu khong nhin duoc ung dung nao cho surrounding text va
+// chung ta da gui gi xuong.
+#define OK_LOG(...) debugLog("wayland", __VA_ARGS__)
 
 // Keycode evdev cua phim BackSpace. Duong fallback dung no khi ung dung khong
 // ho tro surrounding text.

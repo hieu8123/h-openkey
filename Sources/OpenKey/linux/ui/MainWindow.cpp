@@ -7,6 +7,11 @@
 
 #include <QApplication>
 #include <QButtonGroup>
+#include <QClipboard>
+#include <QDesktopServices>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QUrl>
 #include <QCloseEvent>
 #include <QCheckBox>
 #include <QComboBox>
@@ -23,6 +28,7 @@
 
 #include "AppState.h"
 #include "Config.h"
+#include "DebugLog.h"
 #include "Engine.h"
 #include "OpenKeyCore.h"
 
@@ -345,6 +351,9 @@ QWidget* MainWindow::buildSystemTab() {
              &vOtherLanguage);
     layout->addLayout(grid);
 
+    layout->addSpacing(12);
+    layout->addWidget(buildDebugGroup(page));
+
     auto* info = new QLabel(
         tr("Cấu hình lưu tại ~/.config/openkey/config.json\n"
            "Chỉ một bộ gõ được giữ input method của phiên Wayland: phải tắt hẳn "
@@ -355,6 +364,69 @@ QWidget* MainWindow::buildSystemTab() {
     layout->addWidget(info);
     layout->addStretch(1);
     return page;
+}
+
+// Loi go thuong chi tai hien duoc tren may nguoi dung, va gan het la loi thu tu
+// hoac dua tranh — doan mo khong ra. Nut nay de ho tu ghi lai dung luc loi xay
+// ra roi gui file log di.
+QWidget* MainWindow::buildDebugGroup(QWidget* parent) {
+    auto* group = new QGroupBox(tr("Chẩn đoán lỗi gõ"), parent);
+    auto* box = new QVBoxLayout(group);
+
+    auto* hint = new QLabel(
+        tr("Gặp lỗi gõ? Bấm nút bên dưới rồi gõ lại cho lỗi tái hiện, sau đó "
+           "dừng ghi và gửi file nhật ký cho người phát triển."),
+        group);
+    hint->setWordWrap(true);
+    box->addWidget(hint);
+
+    _debugToggle = new QPushButton(group);
+    _debugStatus = new QLabel(group);
+    _debugStatus->setWordWrap(true);
+    _debugStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    auto* copyPath = new QPushButton(tr("Chép đường dẫn"), group);
+    auto* openFolder = new QPushButton(tr("Mở thư mục chứa log"), group);
+
+    auto* row = new QHBoxLayout;
+    row->addWidget(_debugToggle);
+    row->addWidget(copyPath);
+    row->addWidget(openFolder);
+    row->addStretch(1);
+    box->addLayout(row);
+    box->addWidget(_debugStatus);
+
+    connect(_debugToggle, &QPushButton::clicked, this, &MainWindow::toggleDebugLogging);
+    connect(copyPath, &QPushButton::clicked, this, [] {
+        QApplication::clipboard()->setText(
+            QString::fromStdString(openkey::debugLogPath()));
+    });
+    connect(openFolder, &QPushButton::clicked, this, [] {
+        const QString dir =
+            QFileInfo(QString::fromStdString(openkey::debugLogPath())).absolutePath();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
+
+    refreshDebugUi();
+    return group;
+}
+
+void MainWindow::toggleDebugLogging() {
+    const bool wantOn = !openkey::debugLoggingEnabled();
+    if (!openkey::setDebugLogging(wantOn)) {
+        QMessageBox::warning(this, tr("H-OpenKey"),
+                             tr("Không mở được file nhật ký:\n%1")
+                                 .arg(QString::fromStdString(openkey::debugLogPath())));
+    }
+    refreshDebugUi();
+}
+
+void MainWindow::refreshDebugUi() {
+    const bool on = openkey::debugLoggingEnabled();
+    _debugToggle->setText(on ? tr("Dừng ghi nhật ký") : tr("Bắt đầu ghi nhật ký"));
+    _debugStatus->setText(
+        (on ? tr("Đang ghi vào:\n%1") : tr("File nhật ký:\n%1"))
+            .arg(QString::fromStdString(openkey::debugLogPath())));
 }
 
 void MainWindow::refreshFromState() {

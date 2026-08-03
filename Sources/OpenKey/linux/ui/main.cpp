@@ -15,6 +15,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <csignal>
+#include <unistd.h>
 
 #include "Backend.h"
 #include "Config.h"
@@ -47,6 +49,19 @@ QString conflictingInputMethod() {
         }
     }
     return {};
+}
+
+// SIGTERM/SIGINT (systemctl stop, kill thuong) khong tu goi app.exec() thoat,
+// nen backend->stop() phia duoi main() khong duoc chay: Wayland thi khong sao,
+// nhung X11Backend can stop() de tra lai cac keycode da muon, neu khong lan
+// chay sau se can kiet dan. Bat tin hieu bang self-pipe roi thoat qua duong
+// Qt binh thuong, thay vi de mac dinh giet tien trinh ngay lap tuc.
+int g_signalPipe[2] = {-1, -1};
+
+void handleTermSignal(int) {
+    const char byte = 0;
+    ssize_t ignored = write(g_signalPipe[1], &byte, 1);
+    (void)ignored;
 }
 
 } // namespace
@@ -117,6 +132,15 @@ int main(int argc, char** argv) {
     QSocketNotifier notifier(backend->eventFd(), QSocketNotifier::Read);
     QObject::connect(&notifier, &QSocketNotifier::activated, &app,
                      [&backend] { backend->dispatchEvents(); });
+
+    QSocketNotifier* signalNotifier = nullptr;
+    if (pipe(g_signalPipe) == 0) {
+        std::signal(SIGTERM, handleTermSignal);
+        std::signal(SIGINT, handleTermSignal);
+        signalNotifier = new QSocketNotifier(g_signalPipe[0], QSocketNotifier::Read, &app);
+        QObject::connect(signalNotifier, &QSocketNotifier::activated, &app,
+                         [] { QApplication::quit(); });
+    }
 
     // Nhip cho hang doi xuat chu cua backend. Backend Wayland xep hang cac thao
     // tac va cho ung dung bao da xu ly xong; neu ung dung im lang thi nhip nay la

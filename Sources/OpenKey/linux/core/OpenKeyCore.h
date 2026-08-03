@@ -9,6 +9,7 @@
 #ifndef OPENKEY_LINUX_OPENKEYCORE_H
 #define OPENKEY_LINUX_OPENKEYCORE_H
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -85,6 +86,13 @@ private:
     std::string _focusedAppId;
     bool _suspended = false;
     bool _switchKeyArmed = false;
+
+    // Neu khoang lang giua hai phim qua lau, rat co the nguoi dung da chuyen
+    // sang mot o nhap khac roi quay lai ma khong co su kien doi focus nao bao
+    // (vi du doi tab trong cung mot cua so terminal/TUI) — bo dem tu dang go
+    // luc do khong con dung voi thuc te tren man hinh nua.
+    std::chrono::steady_clock::time_point _lastKeyTime;
+    bool _hasLastKeyTime = false;
 };
 
 } // namespace openkey

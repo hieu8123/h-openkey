@@ -6,6 +6,37 @@
 
 ## H-OpenKey (Linux)
 
+##### Version 1.2: (04/08/2026)
+
+**Backend X11 viết lại: chặn phím ở tầng kernel, hết mất chữ khi gõ nhanh.**
+
+XRecord chỉ *quan sát* được phím chứ không chặn được, nên phím gốc luôn tới ứng
+dụng trước rồi bộ gõ mới chạy theo sửa — không bao giờ hết đua tranh. Nay chặn
+thẳng ở kernel bằng `EVIOCGRAB`, phím gốc không còn lọt ra ngoài. Cần tài khoản
+thuộc nhóm `input`; script cài tự lo.
+
+Sáu lỗi tìm được và sửa, tất cả đều đo bằng `xev` chứ không đoán:
+
+- **Mất chữ khi gõ nhanh.** Gõ nhanh là gõ gối đầu — phím trước chưa nhả thì phím
+  sau đã bấm. Lúc bộ gõ bơm lại chính phím đó để xuất chữ, X thấy phím *đang bấm*
+  nên lọc bỏ lệnh bấm, chỉ release lọt qua và ký tự biến mất. Đo được: lần hỏng
+  chỉ có `R kc=38`, không hề có `P kc=38`. Sửa: nhả phím đó ra trước khi bơm.
+  Kết quả đo lại — trước: `của của củ củ của củ`, sau: mất 0 ký tự.
+- **Keysym Latin-1 sai chuẩn.** `â` gán bằng `0x010000E2` thay vì `0x00E2`; nhiều
+  ứng dụng không đổi ngược ra ký tự nên bỏ qua luôn — kéo theo cả họ `ấ ầ ẩ ẫ ậ`.
+- **Đổi bảng phím ngay trước mỗi ký tự.** Ứng dụng tra chữ bằng bản sao keymap
+  riêng, chỉ cập nhật khi xử lý tới `MappingNotify`; gõ nhanh thì phím tới trước
+  thông báo đó. Nay gán sẵn 237 ký tự một lần lúc khởi động.
+- **Rò rỉ keycode khi thoát.** Không trả lại keycode đã mượn, nên mỗi lần chạy
+  lại mất dần cho tới khi cạn sạch và không khởi động được nữa.
+- **Bàn phím rời/không dây rớt kết nối.** Node thiết bị cũ bị xoá nhưng fd chết
+  vẫn nằm trong epoll → quay vòng 100% CPU; bàn phím hiện lại dưới node mới thì
+  không được chặn nên mất hẳn tiếng Việt. Nay dọn fd chết và quét lại mỗi giây.
+- **X tự lặp phím** sinh ký tự mà engine không biết, làm lệch bộ đệm đếm xoá.
+
+Thêm: nút **bắt đầu/dừng ghi nhật ký** trong tab Hệ thống, ghi ra
+`~/.local/share/h-openkey/debug.log` để gửi kèm khi báo lỗi.
+
 ##### Version 1.1: (28/07/2026)
 
 **Sửa lỗi không gõ được trong ô chat Facebook và một số ô nhập trên web.**

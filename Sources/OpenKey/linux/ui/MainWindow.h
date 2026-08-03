@@ -21,6 +21,7 @@ class QCheckBox;
 class QComboBox;
 class QGridLayout;
 class QLabel;
+class QPushButton;
 class QRadioButton;
 
 namespace openkey {
@@ -58,6 +59,9 @@ private:
     void readHotkeyFromUi();
     void writeHotkeyToUi();
     QWidget* buildSystemTab();
+    QWidget* buildDebugGroup(QWidget* parent);
+    void toggleDebugLogging();
+    void refreshDebugUi();
 
     QCheckBox* addCheck(QGridLayout* grid, int row, int column, const QString& text,
                         int* value, const QString& tip = {});
@@ -82,6 +86,8 @@ private:
     QCheckBox* _hotkeySuper = nullptr;
     QComboBox* _hotkeyKey = nullptr;
     QLabel* _hotkeyPreview = nullptr;
+    QPushButton* _debugToggle = nullptr;
+    QLabel* _debugStatus = nullptr;
 
     std::vector<BoundCheck> _checks;
     bool _loading = false;
