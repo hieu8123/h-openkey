@@ -10,13 +10,22 @@
 #include <QDBusServiceWatcher>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QProcessEnvironment>
 #include <QTextStream>
+#include <QThread>
 
+#include "DebugLog.h"
 #include "IBusTypes.h"
 
 namespace openkey {
 namespace {
+
+#define IBUS_LOG(...) debugLog("ibus", __VA_ARGS__)
+
+// Chờ tối đa 3 giây cho daemon vừa bật ghi xong tệp địa chỉ và mở socket.
+constexpr int kDaemonWaitTries = 30;
+constexpr int kDaemonWaitStepMs = 100;
 
 constexpr const char* kService = "org.freedesktop.IBus";
 constexpr const char* kBusPath = "/org/freedesktop/IBus";
@@ -96,8 +105,32 @@ QString IBusConnection::findAddress(std::string& error) {
 }
 
 bool IBusConnection::open(std::string& error) {
+    if (connectOnce(error)) return true;
+
+    // Nhiều máy tắt hẳn ibus, và tệp địa chỉ còn sót lại trỏ vào một socket đã
+    // chết. Cả hai trường hợp đều cứu được bằng cách tự bật daemon lên rồi thử
+    // lại, thay vì bắt người dùng mở terminal gõ lệnh.
+    if (!QProcess::startDetached("ibus-daemon", {"-drx"})) {
+        return false;  // giữ nguyên `error` của lần thử đầu
+    }
+    IBUS_LOG("ibus-daemon chua chay, da tu bat");
+
+    // Daemon mất một lúc mới ghi xong tệp địa chỉ và mở socket.
+    for (int i = 0; i < kDaemonWaitTries; ++i) {
+        QThread::msleep(kDaemonWaitStepMs);
+        std::string retryError;
+        if (connectOnce(retryError)) return true;
+    }
+    error = "bật được ibus-daemon nhưng vẫn không kết nối được";
+    return false;
+}
+
+bool IBusConnection::connectOnce(std::string& error) {
     const QString address = findAddress(error);
     if (address.isEmpty()) return false;
+
+    // Lần thử trước có thể đã để lại một kết nối hỏng mang đúng tên này.
+    QDBusConnection::disconnectFromBus(kConnectionName);
 
     _bus = QDBusConnection::connectToBus(address, kConnectionName);
     if (!_bus.isConnected()) {

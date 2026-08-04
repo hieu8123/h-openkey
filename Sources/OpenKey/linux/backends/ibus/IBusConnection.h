@@ -42,6 +42,9 @@ private:
     // Đọc $IBUS_ADDRESS, không có thì đọc ~/.config/ibus/bus/<id>-unix-<display>.
     static QString findAddress(std::string& error);
 
+    // Một lần thử: tìm địa chỉ rồi kết nối. Không tự bật daemon.
+    bool connectOnce(std::string& error);
+
     QDBusConnection _bus;
 };
 
