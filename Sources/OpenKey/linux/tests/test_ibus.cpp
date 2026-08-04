@@ -93,6 +93,36 @@ void testSoByteKhacSoKyTu() {
           "một chữ có dấu vẫn chỉ là một ký tự");
 }
 
+// Nhóm test này ra đời từ một sự cố thật: DeleteSurroundingText xin xoá 1 ký tự
+// trong lúc ô nhập chưa có ký tự nào làm Mutter vấp assertion rồi tự sát bằng
+// SIGABRT, và người dùng bị đăng xuất cả phiên đăng nhập.
+void testKhongXoaSurroundingKhiOTrong() {
+    openkey::DeleteRequest del;
+    del.keyPresses = 1;
+    check(!openkey::canDeleteSurrounding(del, true, true, 0),
+          "ô nhập trống thì tuyệt đối không được xoá lùi bằng surrounding text");
+}
+
+void testKhongXoaSurroundingKhiXinQuaSoDangCo() {
+    openkey::DeleteRequest del;
+    del.keyPresses = 3;
+    check(!openkey::canDeleteSurrounding(del, true, true, 2),
+          "xin xoá 3 mà chỉ có 2 ký tự thì phải từ chối");
+    check(openkey::canDeleteSurrounding(del, true, true, 3),
+          "có đúng 3 ký tự thì cho phép");
+    check(openkey::canDeleteSurrounding(del, true, true, 10),
+          "có dư ký tự thì cho phép");
+}
+
+void testKhongXoaSurroundingKhiSoLieuDaCu() {
+    openkey::DeleteRequest del;
+    del.keyPresses = 1;
+    check(!openkey::canDeleteSurrounding(del, true, false, 99),
+          "số liệu cũ thì không dựa vào được, dù con số nhìn có vẻ dư");
+    check(!openkey::canDeleteSurrounding(del, false, true, 99),
+          "ứng dụng không hỗ trợ thì cũng không");
+}
+
 } // namespace
 
 int main() {
@@ -105,6 +135,9 @@ int main() {
     testXoaKhiUngDungKhongHoTro();
     testKhongCoGiDeXoa();
     testSoByteKhacSoKyTu();
+    testKhongXoaSurroundingKhiOTrong();
+    testKhongXoaSurroundingKhiXinQuaSoDangCo();
+    testKhongXoaSurroundingKhiSoLieuDaCu();
 
     if (failures == 0) {
         std::printf("  tất cả đều đạt\n");

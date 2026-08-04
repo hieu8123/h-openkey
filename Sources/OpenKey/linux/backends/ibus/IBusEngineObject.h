@@ -50,6 +50,7 @@ public slots:  // ibus-daemon gọi tới qua DBus
     void Enable();
     void Disable();
     void SetCapabilities(uint caps);
+    void SetSurroundingText(const QDBusVariant& text, uint cursor, uint anchor);
     void SetCursorLocation(int x, int y, int w, int h);
     void PropertyActivate(const QString& name, uint state);
     void Destroy();
@@ -70,6 +71,17 @@ private:
     // Ứng dụng đang gõ có cho xoá bằng surrounding text không. IBus báo qua
     // SetCapabilities; mặc định coi là không cho, an toàn hơn.
     bool _clientHasSurroundingText = false;
+
+    // Số ký tự đứng trước con trỏ, theo lần SetSurroundingText gần nhất.
+    //
+    // Bắt buộc phải biết con số này trước khi gọi DeleteSurroundingText: xin xoá
+    // nhiều hơn số ký tự đang có sẽ làm Mutter vấp assertion trong
+    // meta_wayland_text_input_focus_delete_surrounding rồi tự sát bằng SIGABRT —
+    // mà gnome-shell chết trên Wayland nghĩa là người dùng bị đăng xuất cả phiên.
+    // `_surroundingFresh` hoá false ngay khi ta sửa ô nhập, vì lúc đó con số cũ
+    // không còn đúng nữa cho tới khi ứng dụng gửi lại.
+    bool _surroundingFresh = false;
+    uint32_t _charsBeforeCursor = 0;
 };
 
 } // namespace openkey

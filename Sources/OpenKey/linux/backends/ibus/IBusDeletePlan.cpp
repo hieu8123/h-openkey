@@ -7,6 +7,15 @@
 
 namespace openkey {
 
+bool canDeleteSurrounding(const DeleteRequest& del, bool clientSupports,
+                          bool surroundingFresh, uint32_t charsBeforeCursor) {
+    if (!clientSupports) return false;
+    // Chưa nhận được SetSurroundingText nào từ lần sửa gần nhất thì con số đang
+    // giữ đã cũ, không dựa vào được.
+    if (!surroundingFresh) return false;
+    return charsBeforeCursor >= del.keyPresses;
+}
+
 IBusDeletePlan planDelete(const DeleteRequest& del, bool clientHasSurroundingText) {
     IBusDeletePlan plan;
     if (del.keyPresses == 0) return plan;
