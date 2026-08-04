@@ -6,6 +6,25 @@
 
 ## H-OpenKey (Linux)
 
+##### Version 1.2.1: (04/08/2026)
+
+**Chọn nhầm backend không còn làm kẹt cứng ứng dụng.**
+
+Cấu hình chỉ định rõ một backend mà backend đó không dùng được thì OpenKey thoát
+luôn. Nghe thì hợp lý, nhưng bảng điều khiển lại là chỗ *duy nhất* đổi được lựa
+chọn đó — ứng dụng không chạy thì không mở được bảng điều khiển, nên người dùng
+kẹt cứng, không có đường nào tự sửa. Gặp thật trên Zorin OS phiên Wayland: chọn
+backend `wayland`, Mutter không cấp `zwp_input_method_manager_v2`, thế là hỏng.
+
+Nay khi backend được chỉ định không dùng được, bộ gõ rơi xuống “Tự động” và vẫn
+khởi động. Việc rơi xuống **không im lặng**: hiện hộp thoại nói rõ backend nào
+hỏng, vì sao, đang chạy bằng backend gì; đồng thời đặt lại cấu hình về “Tự động”
+để bảng điều khiển hiển thị đúng thứ đang chạy. Nếu không backend nào dùng được
+thì vẫn báo lỗi và dừng như cũ — lúc đó có mở bảng điều khiển cũng không cứu được.
+
+Kèm theo: ghi nhận tình trạng GNOME/Mutter trong README đã đổi từ “suy ra từ yêu
+cầu trong code” thành đã kiểm chứng trên máy thật.
+
 ##### Version 1.2: (04/08/2026)
 
 **Backend X11 viết lại: chặn phím ở tầng kernel, hết mất chữ khi gõ nhanh.**

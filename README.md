@@ -105,10 +105,16 @@ Backend Wayland cần hai giao thức, thiếu một cái là không khởi đ�
 - `zwp_input_method_manager_v2`
 - `zwp_virtual_keyboard_manager_v1`
 
-GNOME/Mutter — mặc định của Ubuntu — theo hiểu biết hiện tại không cung cấp
-`input-method-v2` cho ứng dụng ngoài. Nếu vậy, trên Ubuntu Wayland bộ gõ sẽ rơi
-xuống backend X11, mà X11 dưới XWayland chỉ với tới được ứng dụng XWayland. Điều
-này **chưa được kiểm chứng trên máy thật**, mới chỉ suy ra từ yêu cầu trong code.
+GNOME/Mutter — mặc định của Ubuntu — không cung cấp `input-method-v2` cho ứng
+dụng ngoài. Đã kiểm chứng trên **Zorin OS phiên Wayland**: backend Wayland dừng
+ngay với lỗi `compositor khong ho tro zwp_input_method_manager_v2`. Khi đó bộ gõ
+rơi xuống backend X11, mà X11 dưới XWayland chỉ với tới được ứng dụng XWayland —
+nên cách xử lý vẫn là đăng nhập bằng phiên Xorg.
+
+Nếu trong bảng điều khiển bạn chọn cứng một backend mà backend đó không dùng
+được, OpenKey **không tắt**: nó rơi về “Tự động”, báo cho bạn biết đã rơi vì lý
+do gì và đang chạy bằng backend nào. Không có việc chọn nhầm rồi kẹt luôn, vì
+bảng điều khiển — chỗ duy nhất đổi lại được — lại nằm trong chính ứng dụng đó.
 
 Kiểm tra máy của bạn:
 

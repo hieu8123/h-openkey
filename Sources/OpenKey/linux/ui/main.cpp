@@ -95,12 +95,30 @@ int main(int argc, char** argv) {
     config.loadSmartSwitchTable();
 
     std::string error;
-    auto backend = openkey::createBackend(config.backend, error);
+    std::string fallbackReason;
+    auto backend = openkey::createBackend(config.backend, error, &fallbackReason);
     if (!backend) {
         std::fprintf(stderr, "OpenKey: %s\n", error.c_str());
         QMessageBox::critical(nullptr, "H-OpenKey",
                               QString::fromStdString("Không khởi động được:\n\n" + error));
         return 1;
+    }
+
+    // Backend duoc chon trong cau hinh khong dung duoc nen da ro xuong Auto. Doi
+    // luon cau hinh sang Auto: bang dieu khien phai hien dung thu dang chay, va
+    // lan mo sau khong lap lai man hinh canh bao nay.
+    if (!fallbackReason.empty()) {
+        const QString requested =
+            QString::fromUtf8(openkey::backendKindToString(config.backend));
+        config.backend = openkey::BackendKind::Auto;
+        const QString message =
+            QString("Không dùng được backend “%1” như cấu hình đang chọn:\n\n%2\n\n"
+                    "OpenKey đã chuyển về “Tự động” và đang chạy bằng backend %3. "
+                    "Bạn có thể chọn lại trong bảng điều khiển.")
+                .arg(requested, QString::fromStdString(fallbackReason),
+                     QString::fromUtf8(backend->name()));
+        std::fprintf(stderr, "OpenKey: %s\n", message.toUtf8().constData());
+        QMessageBox::warning(nullptr, "H-OpenKey", message);
     }
 
     if (!backend->start()) {

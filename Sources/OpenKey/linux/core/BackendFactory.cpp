@@ -70,18 +70,33 @@ std::unique_ptr<IBackend> tryX11(std::string& error) {
 
 } // namespace
 
-std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& error) {
-    // Nguoi dung chi dinh ro thi khong tu y roi xuong backend khac: im lang
-    // chuyen duong se khien ho tuong cau hinh cua minh dang co hieu luc.
-    if (requested == BackendKind::Wayland) {
-        auto b = tryWayland(error);
-        if (!b) error = "cau hinh yeu cau backend wayland nhung khong dung duoc: " + error;
-        return b;
-    }
-    if (requested == BackendKind::X11) {
-        auto b = tryX11(error);
-        if (!b) error = "cau hinh yeu cau backend x11 nhung khong dung duoc: " + error;
-        return b;
+std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& error,
+                                        std::string* fallbackReason) {
+    if (fallbackReason) fallbackReason->clear();
+
+    // Nguoi dung chi dinh ro mot backend ma backend do hong: van ro xuong Auto.
+    // Truoc day cho o day la ket cung - OpenKey khong chay thi khong mo duoc bang
+    // dieu khien, ma bang dieu khien lai la cho duy nhat de chon lai backend.
+    // Doi lai, tuyet doi khong ro xuong trong im lang: nguoi goi phai bao cho
+    // nguoi dung biet, neu khong ho tuong cau hinh cua minh dang co hieu luc.
+    if (requested == BackendKind::Wayland || requested == BackendKind::X11) {
+        std::string requestedError;
+        auto b = requested == BackendKind::Wayland ? tryWayland(requestedError)
+                                                   : tryX11(requestedError);
+        if (b) return b;
+
+        requestedError = std::string("cau hinh yeu cau backend ") +
+                         backendKindToString(requested) + " nhung khong dung duoc: " +
+                         requestedError;
+
+        std::string autoError;
+        auto fallback = createBackend(BackendKind::Auto, autoError);
+        if (!fallback) {
+            error = requestedError + "\n" + autoError;
+            return nullptr;
+        }
+        if (fallbackReason) *fallbackReason = requestedError;
+        return fallback;
     }
 
     std::string waylandError;

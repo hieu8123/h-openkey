@@ -108,7 +108,12 @@ BackendKind backendKindFromString(const std::string& s);
 const char* backendKindToString(BackendKind k);
 
 // Tra ve nullptr neu khong dung duoc backend nao; `error` giai thich da dò gi.
-std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& error);
+//
+// `fallbackReason` (neu truyen vao): khi backend duoc chi dinh ro khong dung
+// duoc nhung mot backend khac thi duoc, ham van tra ve backend khac do va ghi
+// vao day ly do backend duoc chi dinh hong. Rong nghia la khong co ro xuong.
+std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& error,
+                                        std::string* fallbackReason = nullptr);
 
 } // namespace openkey
 
