@@ -11,8 +11,8 @@ IBusDeletePlan planDelete(const DeleteRequest& del, bool clientHasSurroundingTex
     IBusDeletePlan plan;
     if (del.keyPresses == 0) return plan;
 
-    // DeleteSurroundingText dem theo KY TU, nen dung keyPresses. Dung utf8Bytes
-    // se xoa thua moi khi chu co dau: mot chu nhu 'e' chiem 3 byte UTF-8.
+    // DeleteSurroundingText đếm theo KÝ TỰ, nên dùng keyPresses. Dùng utf8Bytes
+    // sẽ xoá thừa mỗi khi chữ có dấu: một chữ như 'ế' chiếm 3 byte UTF-8.
     if (clientHasSurroundingText) {
         plan.useSurrounding = true;
         plan.chars = del.keyPresses;

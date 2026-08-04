@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
 #  ibus_dump_variants.py
-#  Cong cu chan doan. In ra chu ky GVariant that cua cac doi tuong IBus, de
-#  backend C++ dung lai cho dung thay vi doan.
+#  Công cụ chẩn đoán. In ra chữ ký GVariant thật của các đối tượng IBus, để
+#  backend C++ dựng lại cho đúng thay vì đoán.
 #
 import gi
 
@@ -24,7 +24,7 @@ def main():
     desc = IBus.EngineDesc(
         name="openkey",
         longname="OpenKey",
-        description="Bo go tieng Viet",
+        description="Bộ gõ tiếng Việt",
         language="vi",
         license="GPL",
         author="hieulc",

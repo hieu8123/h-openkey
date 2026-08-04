@@ -97,9 +97,9 @@ int main(int argc, char** argv) {
     std::string notice;
     auto backend = openkey::createBackend(config.backend, notice);
 
-    // Khoi dong hong thi cung khong tat ung dung: doi sang backend rong roi chay
-    // tiep. Tat han la ket cung - khong chay thi khong mo duoc bang dieu khien,
-    // ma bang dieu khien lai la cho duy nhat de doi lai cau hinh.
+    // Khởi động hỏng thì cũng không tắt ứng dụng: đổi sang backend rỗng rồi chạy
+    // tiếp. Tắt hẳn là kẹt cứng — không chạy thì không mở được bảng điều khiển,
+    // mà bảng điều khiển lại là chỗ duy nhất để đổi lại cấu hình.
     if (!backend->start()) {
         std::string reason = backend->lastError();
         if (!notice.empty()) reason = notice + "\n" + reason;
@@ -113,9 +113,9 @@ int main(int argc, char** argv) {
             QString::fromUtf8(openkey::backendKindToString(config.backend));
         QString message;
         if (backend->canType()) {
-            // Da ro xuong duoc mot backend that. Doi luon cau hinh sang Auto: bang
-            // dieu khien phai hien dung thu dang chay, va lan mo sau khong lap lai
-            // man hinh canh bao nay.
+            // Đã rơi xuống được một backend thật. Đổi luôn cấu hình sang Auto: bảng
+            // điều khiển phải hiện đúng thứ đang chạy, và lần mở sau không lặp lại
+            // màn hình cảnh báo này.
             config.backend = openkey::BackendKind::Auto;
             message = QString("Không dùng được backend “%1” như cấu hình đang chọn:\n\n%2\n\n"
                               "OpenKey đã chuyển về “Tự động” và đang chạy bằng backend %3. "
@@ -123,9 +123,9 @@ int main(int argc, char** argv) {
                           .arg(requested, QString::fromStdString(notice),
                                QString::fromUtf8(backend->name()));
         } else {
-            // Khong con duong nao go duoc. Van chay, van co khay va bang dieu
-            // khien - chi la khong go duoc tieng Viet, va tuyet doi khong dung
-            // toi ban phim cua phien.
+            // Không còn đường nào gõ được. Vẫn chạy, vẫn có khay và bảng điều
+            // khiển — chỉ là không gõ được tiếng Việt, và tuyệt đối không đụng
+            // tới bàn phím của phiên.
             message = QString("OpenKey chưa gõ được tiếng Việt trong phiên này:\n\n%1\n\n"
                               "Ứng dụng vẫn chạy để bạn mở bảng điều khiển, và bàn phím "
                               "của bạn không bị đụng tới. Trên phiên Wayland của GNOME, "
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
 
     // Gan file descriptor cua backend vao vong lap su kien cua Qt. Nho vay chi
     // can mot tien trinh, khong phai tach daemon rieng.
-    // Backend rong khong bat phim nen khong co fd nao de theo doi.
+    // Backend rỗng không bắt phím nên không có fd nào để theo dõi.
     if (backend->eventFd() >= 0) {
         auto* notifier =
             new QSocketNotifier(backend->eventFd(), QSocketNotifier::Read, &app);

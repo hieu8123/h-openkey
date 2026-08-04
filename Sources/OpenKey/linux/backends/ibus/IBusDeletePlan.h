@@ -2,7 +2,7 @@
 //  IBusDeletePlan.h
 //  OpenKey cho Linux
 //
-//  Chon duong xoa cho backend IBus. Tach rieng khoi DBus de test duoc.
+//  Chọn đường xoá cho backend IBus. Tách riêng khỏi DBus để test được.
 //
 
 #ifndef OPENKEY_LINUX_IBUS_DELETE_PLAN_H
@@ -16,8 +16,8 @@ namespace openkey {
 
 struct IBusDeletePlan {
     bool useSurrounding = false;
-    uint32_t chars = 0;       // so KY TU cho DeleteSurroundingText
-    uint32_t backspaces = 0;  // so lan ForwardKeyEvent(BackSpace)
+    uint32_t chars = 0;       // số KÝ TỰ cho DeleteSurroundingText
+    uint32_t backspaces = 0;  // số lần ForwardKeyEvent(BackSpace)
 };
 
 IBusDeletePlan planDelete(const DeleteRequest& del, bool clientHasSurroundingText);

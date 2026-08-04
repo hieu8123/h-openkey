@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 #
 #  ibus_spike.py
-#  Cong cu chan doan, khong phai mot phan cua ung dung.
+#  Công cụ chẩn đoán, không phải một phần của ứng dụng.
 #
-#  Dang ky dong mot engine ten "openkey-spike" voi ibus-daemon roi in ra moi
-#  phim nhan duoc. Dung de tra loi hai cau hoi truoc khi viet backend C++:
-#    1. GNOME co chap nhan engine dang ky dong khong (khong co file component
-#       XML nao ca)?
-#    2. keycode ma IBus gui la keycode evdev hay keycode X11 (evdev + 8)?
+#  Đăng ký động một engine tên "openkey-spike" với ibus-daemon rồi in ra mọi
+#  phím nhận được. Dùng để trả lời hai câu hỏi trước khi viết backend C++:
+#    1. GNOME có chấp nhận engine đăng ký động không (không có file component
+#       XML nào cả)?
+#    2. keycode mà IBus gửi là keycode evdev hay keycode X11 (evdev + 8)?
 #
-#  Chay:  python3 ibus_spike.py
-#  Roi chon "OpenKey (spike)" trong Settings > Keyboard > Input Sources,
-#  hoac doi bang Super+Space, va go vao mot o nhap bat ky.
+#  Chạy:  python3 ibus_spike.py
+#  Rồi chọn "OpenKey (spike)" trong Settings > Keyboard > Input Sources,
+#  hoặc đổi bằng Super+Space, và gõ vào một ô nhập bất kỳ.
 #
 import gi
 
@@ -27,10 +27,10 @@ class SpikeEngine(IBus.Engine):
         print(
             f"keyval=0x{keyval:04x} keycode={keycode} "
             f"(evdev+8 = {keycode + 8}) state=0x{state:08x} "
-            f"{'nha' if released else 'bam'}",
+            f"{'nhả' if released else 'bấm'}",
             flush=True,
         )
-        # Tra ve False de ung dung van nhan duoc phim goc: spike chi quan sat.
+        # Trả về False để ứng dụng vẫn nhận được phím gốc: spike chỉ quan sát.
         return False
 
     def do_focus_in(self):
@@ -40,7 +40,7 @@ class SpikeEngine(IBus.Engine):
         print("focus_out", flush=True)
 
     def do_set_capabilities(self, caps):
-        # Bit 1<<5 la surrounding text. Can biet de sau nay chon duong xoa.
+        # Bit 1<<5 là surrounding text. Cần biết để sau này chọn đường xoá.
         print(f"capabilities=0x{caps:08x} surrounding={bool(caps & (1 << 5))}", flush=True)
 
 
@@ -48,12 +48,12 @@ def main():
     IBus.init()
     bus = IBus.Bus()
     if not bus.is_connected():
-        raise SystemExit("ibus-daemon chua chay. Chay truoc: ibus-daemon -drx")
+        raise SystemExit("ibus-daemon chưa chạy. Chạy trước: ibus-daemon -drx")
 
     bus.connect("disconnected", lambda *_: GLib.MainLoop().quit())
 
     factory = IBus.Factory.new(bus.get_connection())
-    # __gtype__ cua chinh lop: GLib.type_from_name da bi bo o pygobject moi.
+    # __gtype__ của chính lớp: GLib.type_from_name đã bị bỏ ở pygobject mới.
     factory.add_engine("openkey-spike", SpikeEngine.__gtype__)
 
     component = IBus.Component(
@@ -70,7 +70,7 @@ def main():
         IBus.EngineDesc(
             name="openkey-spike",
             longname="OpenKey (spike)",
-            description="Spike dang ky dong",
+            description="Spike đăng ký động",
             language="vi",
             license="GPL",
             author="",
@@ -79,8 +79,8 @@ def main():
         )
     )
     if not bus.register_component(component):
-        raise SystemExit("register_component that bai")
-    print("da dang ky component, dang cho ibus goi CreateEngine", flush=True)
+        raise SystemExit("register_component thất bại")
+    print("đã đăng ký component, đang chờ ibus gọi CreateEngine", flush=True)
 
     bus.set_global_engine_async("openkey-spike", -1, None, None, None)
     GLib.MainLoop().run()

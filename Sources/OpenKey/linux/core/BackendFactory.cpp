@@ -61,11 +61,11 @@ std::unique_ptr<IBackend> tryX11(std::string& error) {
         error = "không thấy DISPLAY";
         return nullptr;
     }
-    // Dang o phien Wayland thi DISPLAY nay la cua XWayland, va dung backend X11
-    // o day la tu ban vao chan: no chan phim ngay o kernel bang EVIOCGRAB nen
-    // compositor khong con nhan duoc phim vat ly, trong khi phim bom lai bang
-    // XTEST chi toi duoc ung dung XWayland. Ung dung Wayland thuan mat sach phim,
-    // ca phien coi nhu liet ban phim. Tha khong go duoc tieng Viet con hon.
+    // Đang ở phiên Wayland thì DISPLAY này là của XWayland, và dùng backend X11
+    // ở đây là tự bắn vào chân: nó chặn phím ngay ở kernel bằng EVIOCGRAB nên
+    // compositor không còn nhận được phím vật lý, trong khi phím bơm lại bằng
+    // XTEST chỉ tới được ứng dụng XWayland. Ứng dụng Wayland thuần mất sạch phím,
+    // cả phiên coi như liệt bàn phím. Thà không gõ được tiếng Việt còn hơn.
     if (envHasValue("WAYLAND_DISPLAY") && !envHasValue("OPENKEY_ALLOW_X11_ON_WAYLAND")) {
         error = "đang ở phiên Wayland, dùng backend X11 sẽ chặn mất phím của "
                 "ứng dụng Wayland (đặt OPENKEY_ALLOW_X11_ON_WAYLAND=1 nếu bạn "
@@ -79,9 +79,9 @@ std::unique_ptr<IBackend> tryX11(std::string& error) {
 #endif
 }
 
-// Backend khong lam gi ca. Diem mau chot la no KHONG dung toi ban phim: khong
-// EVIOCGRAB, khong grab cua compositor. Nho vay khi khong go duoc tieng Viet thi
-// nguoi dung van go duoc binh thuong moi thu khac.
+// Backend không làm gì cả. Điểm mấu chốt là nó KHÔNG đụng tới bàn phím: không
+// EVIOCGRAB, không grab của compositor. Nhờ vậy khi không gõ được tiếng Việt thì
+// người dùng vẫn gõ được bình thường mọi thứ khác.
 class NullBackend final : public IBackend {
 public:
     const char* name() const override { return "khong-go-duoc"; }
@@ -105,11 +105,11 @@ std::unique_ptr<IBackend> makeNullBackend() { return std::make_unique<NullBacken
 std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& notice) {
     notice.clear();
 
-    // Nguoi dung chi dinh ro mot backend ma backend do hong: van ro xuong Auto.
-    // Bat han ung dung o day la ket cung - khong chay thi khong mo duoc bang dieu
-    // khien, ma bang dieu khien lai la cho duy nhat de chon lai backend.
-    // Doi lai, tuyet doi khong ro xuong trong im lang: nguoi goi phai bao cho
-    // nguoi dung biet, neu khong ho tuong cau hinh cua minh dang co hieu luc.
+    // Người dùng chỉ định rõ một backend mà backend đó hỏng: vẫn rơi xuống Auto.
+    // Tắt hẳn ứng dụng ở đây là kẹt cứng — không chạy thì không mở được bảng điều
+    // khiển, mà bảng điều khiển lại là chỗ duy nhất để chọn lại backend.
+    // Đổi lại, tuyệt đối không rơi xuống trong im lặng: người gọi phải báo cho
+    // người dùng biết, nếu không họ tưởng cấu hình của mình đang có hiệu lực.
     if (requested == BackendKind::Wayland || requested == BackendKind::X11) {
         std::string requestedError;
         auto b = requested == BackendKind::Wayland ? tryWayland(requestedError)
@@ -118,9 +118,9 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& noti
 
         std::string autoNotice;
         auto fallback = createBackend(BackendKind::Auto, autoNotice);
-        // Ro xuong duoc mot backend that thi chi can noi nguyen nhan tran trui:
-        // nguoi goi da noi san "khong dung duoc backend X" roi. Con neu khong ro
-        // xuong duoc gi thi dung autoNotice, vi no da liet ke ca hai duong.
+        // Rơi xuống được một backend thật thì chỉ cần nói nguyên nhân trần trụi:
+        // người gọi đã nói sẵn "không dùng được backend X" rồi. Còn nếu không rơi
+        // xuống được gì thì dùng autoNotice, vì nó đã liệt kê cả hai đường.
         notice = fallback->canType() ? requestedError : autoNotice;
         return fallback;
     }

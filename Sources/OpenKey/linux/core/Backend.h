@@ -59,8 +59,8 @@ public:
     virtual const char* name() const = 0;
     virtual BackendCaps caps() const = 0;
 
-    // False nghia la backend nay khong go duoc chu nao (xem makeNullBackend).
-    // Ung dung van chay binh thuong, chi la khong co tieng Viet.
+    // False nghĩa là backend này không gõ được chữ nào (xem makeNullBackend).
+    // Ứng dụng vẫn chạy bình thường, chỉ là không có tiếng Việt.
     virtual bool canType() const { return true; }
 
     // Tra ve false kem thong bao qua lastError() neu khong khoi dong duoc.
@@ -111,15 +111,15 @@ enum class BackendKind { Auto, Wayland, X11 };
 BackendKind backendKindFromString(const std::string& s);
 const char* backendKindToString(BackendKind k);
 
-// Backend rong: khong bat phim, khong go duoc chu nao, va quan trong nhat la
-// khong dung toi ban phim cua phien. Dung khi khong con duong nao go duoc.
+// Backend rỗng: không bắt phím, không gõ được chữ nào, và quan trọng nhất là
+// không đụng tới bàn phím của phiên. Dùng khi không còn đường nào gõ được.
 std::unique_ptr<IBackend> makeNullBackend();
 
-// KHONG BAO GIO tra ve nullptr. Khong dung duoc backend nao thi tra ve backend
-// rong, de bang dieu khien - cho duy nhat doi lai duoc cau hinh - van mo len duoc.
+// KHÔNG BAO GIỜ trả về nullptr. Không dùng được backend nào thì trả về backend
+// rỗng, để bảng điều khiển — chỗ duy nhất đổi lại được cấu hình — vẫn mở lên được.
 //
-// `notice` rong nghia la moi thu dung y muon. Khac rong la co chuyen can bao cho
-// nguoi dung: hoac da ro xuong backend khac, hoac khong go duoc chu nao ca.
+// `notice` rỗng nghĩa là mọi thứ đúng ý muốn. Khác rỗng là có chuyện cần báo cho
+// người dùng: hoặc đã rơi xuống backend khác, hoặc không gõ được chữ nào cả.
 std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& notice);
 
 } // namespace openkey

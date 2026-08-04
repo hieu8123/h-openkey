@@ -2,8 +2,8 @@
 //  IBusKeyTranslate.h
 //  OpenKey cho Linux
 //
-//  Phan thuan cua backend IBus: doi tham so cua ProcessKeyEvent sang KeyEvent.
-//  Tach rieng de test duoc ma khong can ibus-daemon.
+//  Phần thuần của backend IBus: đổi tham số của ProcessKeyEvent sang KeyEvent.
+//  Tách riêng để test được mà không cần ibus-daemon.
 //
 
 #ifndef OPENKEY_LINUX_IBUS_KEY_TRANSLATE_H

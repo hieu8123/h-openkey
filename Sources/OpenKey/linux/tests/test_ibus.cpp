@@ -1,8 +1,8 @@
 //
 //  test_ibus.cpp
-//  OpenKey cho Linux — kiem thu phan thuan cua backend IBus
+//  OpenKey cho Linux — kiểm thử phần thuần của backend IBus
 //
-//  Khong can ibus-daemon, khong can man hinh.
+//  Không cần ibus-daemon, không cần màn hình.
 //
 
 #include <cstdio>
@@ -16,52 +16,52 @@ int failures = 0;
 
 void check(bool ok, const char* what) {
     if (!ok) {
-        std::printf("  [hong] %s\n", what);
+        std::printf("  [hỏng] %s\n", what);
         ++failures;
     }
 }
 
-// Keycode evdev cua phim 'a' la 30; quy uoc noi bo la X11 = evdev + 8 = 38.
+// Keycode evdev của phím 'a' là 30; quy ước nội bộ là X11 = evdev + 8 = 38.
 constexpr uint32_t kEvdevA = 30;
 constexpr uint32_t kX11A = 38;
 
 void testPhimBamThuong() {
     const openkey::KeyEvent ev = openkey::keyEventFromIBus(0x61, kEvdevA, 0);
-    check(ev.pressed, "phim khong co bit nha thi phai la dang bam");
-    check(ev.keycode == kX11A, "keycode phai doi sang quy uoc X11");
+    check(ev.pressed, "phím không có bit nhả thì phải là đang bấm");
+    check(ev.keycode == kX11A, "keycode phải đổi sang quy ước X11");
     check(!ev.shift && !ev.ctrl && !ev.alt && !ev.super && !ev.capsLock,
-          "khong co modifier nao duoc bat");
+          "không có modifier nào được bật");
 }
 
 void testPhimNha() {
     const openkey::KeyEvent ev = openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 30);
-    check(!ev.pressed, "bit 1<<30 nghia la phim nha");
+    check(!ev.pressed, "bit 1<<30 nghĩa là phím nhả");
 }
 
 void testTungModifier() {
-    check(openkey::keyEventFromIBus(0x41, kEvdevA, 1u << 0).shift, "bit 0 la Shift");
-    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 1).capsLock, "bit 1 la CapsLock");
-    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 2).ctrl, "bit 2 la Ctrl");
-    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 3).alt, "bit 3 la Alt");
-    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 6).super, "bit 6 la Super");
+    check(openkey::keyEventFromIBus(0x41, kEvdevA, 1u << 0).shift, "bit 0 là Shift");
+    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 1).capsLock, "bit 1 là CapsLock");
+    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 2).ctrl, "bit 2 là Ctrl");
+    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 3).alt, "bit 3 là Alt");
+    check(openkey::keyEventFromIBus(0x61, kEvdevA, 1u << 6).super, "bit 6 là Super");
 }
 
 void testNhieuModifierCungLuc() {
     const openkey::KeyEvent ev =
         openkey::keyEventFromIBus(0x61, kEvdevA, (1u << 0) | (1u << 2) | (1u << 30));
-    check(ev.shift && ev.ctrl, "Ctrl+Shift cung luc phai bat ca hai");
-    check(!ev.pressed, "va van la phim nha");
-    check(ev.otherControlKey(), "Ctrl tinh la phim dieu khien khac");
+    check(ev.shift && ev.ctrl, "Ctrl+Shift cùng lúc phải bật cả hai");
+    check(!ev.pressed, "và vẫn là phím nhả");
+    check(ev.otherControlKey(), "Ctrl tính là phím điều khiển khác");
 }
 
 void testXoaKhiUngDungHoTroSurrounding() {
     openkey::DeleteRequest del;
-    del.utf8Bytes = 9;   // 3 ky tu tieng Viet co dau
+    del.utf8Bytes = 9;   // 3 ký tự tiếng Việt có dấu
     del.keyPresses = 3;
     const openkey::IBusDeletePlan plan = openkey::planDelete(del, true);
-    check(plan.useSurrounding, "ung dung ho tro thi phai dung surrounding text");
-    check(plan.chars == 3, "dem theo KY TU (3), khong phai byte (9)");
-    check(plan.backspaces == 0, "khong gui BackSpace nao");
+    check(plan.useSurrounding, "ứng dụng hỗ trợ thì phải dùng surrounding text");
+    check(plan.chars == 3, "đếm theo KÝ TỰ (3), không phải byte (9)");
+    check(plan.backspaces == 0, "không gửi BackSpace nào");
 }
 
 void testXoaKhiUngDungKhongHoTro() {
@@ -69,28 +69,28 @@ void testXoaKhiUngDungKhongHoTro() {
     del.utf8Bytes = 9;
     del.keyPresses = 3;
     const openkey::IBusDeletePlan plan = openkey::planDelete(del, false);
-    check(!plan.useSurrounding, "ung dung khong ho tro thi phai roi xuong BackSpace");
-    check(plan.backspaces == 3, "gui dung 3 lan BackSpace");
-    check(plan.chars == 0, "khong dung surrounding text");
+    check(!plan.useSurrounding, "ứng dụng không hỗ trợ thì phải rơi xuống BackSpace");
+    check(plan.backspaces == 3, "gửi đúng 3 lần BackSpace");
+    check(plan.chars == 0, "không dùng surrounding text");
 }
 
 void testKhongCoGiDeXoa() {
-    openkey::DeleteRequest del;  // ca hai deu 0
+    openkey::DeleteRequest del;  // cả hai đều 0
     const openkey::IBusDeletePlan surrounding = openkey::planDelete(del, true);
     const openkey::IBusDeletePlan backspace = openkey::planDelete(del, false);
     check(!surrounding.useSurrounding && surrounding.chars == 0,
-          "khong co gi de xoa thi khong goi surrounding text");
-    check(backspace.backspaces == 0, "va khong gui BackSpace nao");
+          "không có gì để xoá thì không gọi surrounding text");
+    check(backspace.backspaces == 0, "và không gửi BackSpace nào");
 }
 
 void testSoByteKhacSoKyTu() {
-    // Bay chinh: mot chu 'e' thuong chiem 1 byte, 'e' co dau chiem 3 byte.
-    // Neu cai dat lo dung utf8Bytes thi ca hai ca duoi day deu ra 1.
+    // Bẫy chính: một chữ 'e' thường chiếm 1 byte, 'ế' có dấu chiếm 3 byte.
+    // Nếu cài đặt lỡ dùng utf8Bytes thì cả hai ca dưới đây đều ra 1.
     openkey::DeleteRequest motChuCoDau;
     motChuCoDau.utf8Bytes = 3;
     motChuCoDau.keyPresses = 1;
     check(openkey::planDelete(motChuCoDau, true).chars == 1,
-          "mot chu co dau van chi la mot ky tu");
+          "một chữ có dấu vẫn chỉ là một ký tự");
 }
 
 } // namespace
@@ -107,9 +107,9 @@ int main() {
     testSoByteKhacSoKyTu();
 
     if (failures == 0) {
-        std::printf("  tat ca deu dat\n");
+        std::printf("  tất cả đều đạt\n");
         return 0;
     }
-    std::printf("  %d cho hong\n", failures);
+    std::printf("  %d chỗ hỏng\n", failures);
     return 1;
 }

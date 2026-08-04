@@ -1,42 +1,42 @@
-# Chu ky GVariant cua cac doi tuong IBus
+# Chữ ký GVariant của các đối tượng IBus
 
-Backend IBus tu noi DBus nen phai tu dung dung cau truc GVariant ma ibus-daemon
-mong doi. Doan chu ky nay la nguon loi rat kho chan doan: daemon chi im lang tu
-choi, khong bao gi ca.
+Backend IBus tự nói DBus nên phải tự dựng đúng cấu trúc GVariant mà ibus-daemon
+mong đợi. Đoán chữ ký này là nguồn lỗi rất khó chẩn đoán: daemon chỉ im lặng từ
+chối, không báo gì cả.
 
-Cac chu ky duoi day lay tu chinh thu vien IBus tren may that bang
-`tools/ibus_dump_variants.py`. Khi len IBus phien ban moi ma dang ky component
-that bai, viec dau tien la chay lai script do va doi chieu.
+Các chữ ký dưới đây lấy từ chính thư viện IBus trên máy thật bằng
+`tools/ibus_dump_variants.py`. Khi lên IBus phiên bản mới mà đăng ký component
+thất bại, việc đầu tiên là chạy lại script đó và đối chiếu.
 
-IBus phien ban: **1.5.29-rc2**
+IBus phiên bản: **1.5.29-rc2**
 
 ## IBusEngineDesc
 
 ```
 signature: (sa{sv}ssssssssussssssss)
-value    : ('IBusEngineDesc', @a{sv} {}, 'openkey', 'OpenKey', 'Bo go tieng Viet',
+value    : ('IBusEngineDesc', @a{sv} {}, 'openkey', 'OpenKey', 'Bộ gõ tiếng Việt',
             'vi', 'GPL', 'hieulc', 'h-openkey', 'us', uint32 0,
             '', '', '', '', '', '', '', '')
 ```
 
-Thu tu truong:
+Thứ tự trường:
 
-| # | Kieu | Truong | Gia tri cua OpenKey |
+| # | Kiểu | Trường | Giá trị của OpenKey |
 | --- | --- | --- | --- |
-| 1 | s | ten lop | `IBusEngineDesc` |
-| 2 | a{sv} | attachments | rong |
+| 1 | s | tên lớp | `IBusEngineDesc` |
+| 2 | a{sv} | attachments | rỗng |
 | 3 | s | name | `openkey` |
 | 4 | s | longname | `OpenKey` |
-| 5 | s | description | `Bo go tieng Viet` |
+| 5 | s | description | `Bộ gõ tiếng Việt` |
 | 6 | s | language | `vi` |
 | 7 | s | license | `GPL` |
 | 8 | s | author | `hieulc` |
 | 9 | s | icon | `h-openkey` |
 | 10 | s | layout | `us` |
 | 11 | u | rank | `0` |
-| 12-19 | s | hotkeys, symbol, setup, layout_variant, layout_option, version, textdomain, icon_prop_key | rong het |
+| 12-19 | s | hotkeys, symbol, setup, layout_variant, layout_option, version, textdomain, icon_prop_key | rỗng hết |
 
-Tam chuoi rong cuoi cung **khong duoc bo**: thieu mot cai la sai chu ky.
+Tám chuỗi rỗng cuối cùng **không được bỏ**: thiếu một cái là sai chữ ký.
 
 ## IBusComponent
 
@@ -47,22 +47,22 @@ value    : ('IBusComponent', @a{sv} {}, 'org.freedesktop.IBus.OpenKey', 'H-OpenK
             @av [], [<IBusEngineDesc...>])
 ```
 
-Thu tu truong:
+Thứ tự trường:
 
-| # | Kieu | Truong | Gia tri cua OpenKey |
+| # | Kiểu | Trường | Giá trị của OpenKey |
 | --- | --- | --- | --- |
-| 1 | s | ten lop | `IBusComponent` |
-| 2 | a{sv} | attachments | rong |
+| 1 | s | tên lớp | `IBusComponent` |
+| 2 | a{sv} | attachments | rỗng |
 | 3 | s | name | `org.freedesktop.IBus.OpenKey` |
 | 4 | s | description | `H-OpenKey` |
-| 5 | s | version | phien ban hien tai |
+| 5 | s | version | phiên bản hiện tại |
 | 6 | s | license | `GPL` |
 | 7 | s | author | `hieulc` |
 | 8 | s | homepage | URL repo |
-| 9 | s | exec | **rong** — ta dang ky dong, khong de daemon spawn tien trinh |
-| 10 | s | textdomain | rong |
-| 11 | av | observed_paths | rong |
-| 12 | av | engines | mot phan tu, la IBusEngineDesc o tren |
+| 9 | s | exec | **rỗng** — ta đăng ký động, không để daemon spawn tiến trình |
+| 10 | s | textdomain | rỗng |
+| 11 | av | observed_paths | rỗng |
+| 12 | av | engines | một phần tử, là IBusEngineDesc ở trên |
 
 ## IBusText
 
@@ -71,22 +71,22 @@ signature: (sa{sv}sv)
 value    : ('IBusText', @a{sv} {}, 'tiếng Việt', <('IBusAttrList', @a{sv} {}, @av [])>)
 ```
 
-| # | Kieu | Truong |
+| # | Kiểu | Trường |
 | --- | --- | --- |
-| 1 | s | ten lop, `IBusText` |
-| 2 | a{sv} | attachments, rong |
-| 3 | s | noi dung chu, UTF-8 |
-| 4 | v | IBusAttrList: `('IBusAttrList', a{sv} rong, av rong)` |
+| 1 | s | tên lớp, `IBusText` |
+| 2 | a{sv} | attachments, rỗng |
+| 3 | s | nội dung chữ, UTF-8 |
+| 4 | v | IBusAttrList: `('IBusAttrList', a{sv} rỗng, av rỗng)` |
 
-OpenKey khong bao gio dung thuoc tinh hien thi (gach chan, mau) vi khong dung
-preedit, nen IBusAttrList luon rong.
+OpenKey không bao giờ dùng thuộc tính hiển thị (gạch chân, màu) vì không dùng
+preedit, nên IBusAttrList luôn rỗng.
 
-## Ket qua do khac tu spike
+## Kết quả đo khác từ spike
 
-- `capabilities` cua ung dung GTK do duoc: `0x29`, tuc **co** bit surrounding
-  text (`1<<5`). Nghia la duong `DeleteSurroundingText` dung duoc that, khong
-  phai luon roi xuong BackSpace.
-- GNOME **chap nhan engine dang ky dong**: khong can file component XML nao,
-  `ibus engine` bao dung ten engine vua dang ky.
-- `ibus list-engine` **khong** liet ke engine dang ky dong. Do la binh thuong,
-  no chi doc cac component cai san bang XML. Dung dieu nay lam phep thu.
+- `capabilities` của ứng dụng GTK đo được: `0x29`, tức **có** bit surrounding
+  text (`1<<5`). Nghĩa là đường `DeleteSurroundingText` dùng được thật, không
+  phải luôn rơi xuống BackSpace.
+- GNOME **chấp nhận engine đăng ký động**: không cần file component XML nào,
+  `ibus engine` báo đúng tên engine vừa đăng ký.
+- `ibus list-engine` **không** liệt kê engine đăng ký động. Đó là bình thường,
+  nó chỉ đọc các component cài sẵn bằng XML. Đừng lấy điều này làm phép thử.
