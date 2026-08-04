@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
         tray.show();
     } else {
         std::fprintf(stderr,
-                     "OpenKey: khong co khay he thong, van chay nhung khong co bieu tuong\n");
+                     "OpenKey: không có khay hệ thống, vẫn chạy nhưng không có biểu tượng\n");
     }
 
     // Dung khi lam giao dien: tu chup cua so ra tep roi thoat, de doi chieu

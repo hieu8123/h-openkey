@@ -107,7 +107,7 @@ Backend Wayland cần hai giao thức, thiếu một cái là không khởi đ�
 
 GNOME/Mutter — mặc định của Ubuntu — không cung cấp `input-method-v2` cho ứng
 dụng ngoài. Đã kiểm chứng trên **Zorin OS phiên Wayland**: backend Wayland dừng
-ngay với lỗi `compositor khong ho tro zwp_input_method_manager_v2`. Khi đó bộ gõ
+ngay với lỗi `compositor không hỗ trợ zwp_input_method_manager_v2`. Khi đó bộ gõ
 rơi xuống backend X11, mà X11 dưới XWayland chỉ với tới được ứng dụng XWayland —
 nên cách xử lý vẫn là đăng nhập bằng phiên Xorg.
 

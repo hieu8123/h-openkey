@@ -120,7 +120,7 @@ private:
 bool X11Backend::open(std::string& error) {
     _control = XOpenDisplay(nullptr);
     if (!_control) {
-        error = "khong mo duoc man hinh X11";
+        error = "không mở được màn hình X11";
         return false;
     }
 
@@ -129,7 +129,7 @@ bool X11Backend::open(std::string& error) {
     int eventBase = 0;
     int errorBase = 0;
     if (!XTestQueryExtension(_control, &eventBase, &errorBase, &major, &minor)) {
-        error = "X server khong co phan mo rong XTEST";
+        error = "X server không có phần mở rộng XTEST";
         return false;
     }
     return true;
@@ -138,12 +138,12 @@ bool X11Backend::open(std::string& error) {
 bool X11Backend::start() {
     _backspaceKeycode = XKeysymToKeycode(_control, XK_BackSpace);
     if (_backspaceKeycode == 0) {
-        _error = "khong tim duoc keycode cua phim BackSpace";
+        _error = "không tìm được keycode của phím BackSpace";
         return false;
     }
     collectSpareKeycodes();
     if (_spareKeycodes.empty()) {
-        _error = "khong con keycode trong nao de go chu";
+        _error = "không còn keycode trống nào để gõ chữ";
         return false;
     }
     X11_LOG("co %zu keycode trong de go chu", _spareKeycodes.size());

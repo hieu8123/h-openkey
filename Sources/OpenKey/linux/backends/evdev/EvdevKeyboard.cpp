@@ -106,14 +106,14 @@ void EvdevKeyboard::rescan() {
 bool EvdevKeyboard::start(std::string& error) {
     DIR* dir = opendir("/dev/input");
     if (!dir) {
-        error = "khong mo duoc /dev/input";
+        error = "không mở được /dev/input";
         return false;
     }
 
     _epollFd = epoll_create1(EPOLL_CLOEXEC);
     if (_epollFd < 0) {
         closedir(dir);
-        error = "khong tao duoc epoll";
+        error = "không tạo được epoll";
         return false;
     }
 
@@ -129,9 +129,9 @@ bool EvdevKeyboard::start(std::string& error) {
         close(_epollFd);
         _epollFd = -1;
         error = anyPermissionDenied
-            ? "khong co quyen doc /dev/input/event*: them user vao group "
-              "'input' (hoac cai udev rule cua goi cai dat) roi dang nhap lai"
-            : "khong tim thay thiet bi ban phim nao trong /dev/input";
+            ? "không có quyền đọc /dev/input/event*: thêm user vào nhóm "
+              "'input' (hoặc cài udev rule của gói cài đặt) rồi đăng nhập lại"
+            : "không tìm thấy thiết bị bàn phím nào trong /dev/input";
         return false;
     }
     return true;

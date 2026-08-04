@@ -45,12 +45,12 @@ bool envHasValue(const char* name) {
 std::unique_ptr<IBackend> tryWayland(std::string& error) {
 #ifdef OPENKEY_HAVE_WAYLAND
     if (!envHasValue("WAYLAND_DISPLAY")) {
-        error = "khong thay WAYLAND_DISPLAY";
+        error = "không thấy WAYLAND_DISPLAY";
         return nullptr;
     }
     return makeWaylandBackend(error);
 #else
-    error = "ban build nay khong kem backend Wayland";
+    error = "bản build này không kèm backend Wayland";
     return nullptr;
 #endif
 }
@@ -58,12 +58,12 @@ std::unique_ptr<IBackend> tryWayland(std::string& error) {
 std::unique_ptr<IBackend> tryX11(std::string& error) {
 #ifdef OPENKEY_HAVE_X11
     if (!envHasValue("DISPLAY")) {
-        error = "khong thay DISPLAY";
+        error = "không thấy DISPLAY";
         return nullptr;
     }
     return makeX11Backend(error);
 #else
-    error = "backend X11 se co o giai doan 3";
+    error = "bản build này không kèm backend X11";
     return nullptr;
 #endif
 }
@@ -85,16 +85,16 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& erro
                                                    : tryX11(requestedError);
         if (b) return b;
 
-        requestedError = std::string("cau hinh yeu cau backend ") +
-                         backendKindToString(requested) + " nhung khong dung duoc: " +
-                         requestedError;
-
         std::string autoError;
         auto fallback = createBackend(BackendKind::Auto, autoError);
         if (!fallback) {
-            error = requestedError + "\n" + autoError;
+            error = std::string("cấu hình yêu cầu backend ") +
+                    backendKindToString(requested) + " nhưng không dùng được: " +
+                    requestedError + "\n" + autoError;
             return nullptr;
         }
+        // Chi tra ve nguyen nhan tran trui: nguoi goi da noi san "khong dung duoc
+        // backend X" roi, nhac lai lan nua trong cung mot hop thoai la thua.
         if (fallbackReason) *fallbackReason = requestedError;
         return fallback;
     }
@@ -109,7 +109,7 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& erro
         return b;
     }
 
-    error = "khong dung duoc backend nao.\n  wayland: " + waylandError +
+    error = "không dùng được backend nào.\n  wayland: " + waylandError +
             "\n  x11: " + x11Error;
     return nullptr;
 }

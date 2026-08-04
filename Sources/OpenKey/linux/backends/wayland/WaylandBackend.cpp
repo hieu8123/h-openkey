@@ -367,8 +367,8 @@ void WaylandBackend::onDone(void* data, zwp_input_method_v2*) {
 void WaylandBackend::onUnavailable(void* data, zwp_input_method_v2*) {
     auto* self = static_cast<WaylandBackend*>(data);
     self->_error =
-        "mot bo go khac dang giu input method cua phien nay. "
-        "Hay tat fcitx5 va ibus roi chay lai OpenKey.";
+        "một bộ gõ khác đang giữ input method của phiên này. "
+        "Hãy tắt fcitx5 và ibus rồi chạy lại OpenKey.";
     self->_current.active = false;
     self->_pending.active = false;
 }
@@ -478,7 +478,7 @@ void WaylandBackend::onKey(void* data, zwp_input_method_keyboard_grab_v2*, uint3
 bool WaylandBackend::connect(std::string& error) {
     _display = wl_display_connect(nullptr);
     if (!_display) {
-        error = "khong ket noi duoc toi compositor Wayland";
+        error = "không kết nối được tới compositor Wayland";
         return false;
     }
 
@@ -488,17 +488,17 @@ bool WaylandBackend::connect(std::string& error) {
     wl_display_roundtrip(_display);
 
     if (!_seat) {
-        error = "compositor khong cung cap wl_seat";
+        error = "compositor không cung cấp wl_seat";
         return false;
     }
     if (!_imManager) {
         error =
-            "compositor khong ho tro zwp_input_method_manager_v2, "
-            "nen khong the tu lam bo go";
+            "compositor không hỗ trợ zwp_input_method_manager_v2, "
+            "nên không thể tự làm bộ gõ";
         return false;
     }
     if (!_vkManager) {
-        error = "compositor khong ho tro zwp_virtual_keyboard_manager_v1";
+        error = "compositor không hỗ trợ zwp_virtual_keyboard_manager_v1";
         return false;
     }
     return true;
@@ -507,20 +507,20 @@ bool WaylandBackend::connect(std::string& error) {
 bool WaylandBackend::start() {
     _xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if (!_xkbContext) {
-        _error = "khong tao duoc xkb context";
+        _error = "không tạo được xkb context";
         return false;
     }
 
     // Tao ban phim ao truoc, de khi su kien keymap toi la co san cho nap vao.
     _vk = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(_vkManager, _seat);
     if (!_vk) {
-        _error = "khong tao duoc ban phim ao";
+        _error = "không tạo được bàn phím ảo";
         return false;
     }
 
     _im = zwp_input_method_manager_v2_get_input_method(_imManager, _seat);
     if (!_im) {
-        _error = "khong tao duoc input method";
+        _error = "không tạo được input method";
         return false;
     }
     static const zwp_input_method_v2_listener imListener = {
@@ -530,7 +530,7 @@ bool WaylandBackend::start() {
 
     _grab = zwp_input_method_v2_grab_keyboard(_im);
     if (!_grab) {
-        _error = "khong grab duoc ban phim";
+        _error = "không grab được bàn phím";
         return false;
     }
     static const zwp_input_method_keyboard_grab_v2_listener grabListener = {
