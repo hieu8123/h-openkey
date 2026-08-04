@@ -77,6 +77,7 @@ private:
     QComboBox* _codeTable = nullptr;
     QComboBox* _inputType = nullptr;
     QRadioButton* _backendAuto = nullptr;
+    QRadioButton* _backendIBus = nullptr;
     QRadioButton* _backendWayland = nullptr;
     QRadioButton* _backendX11 = nullptr;
 

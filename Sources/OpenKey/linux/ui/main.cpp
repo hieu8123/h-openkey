@@ -31,8 +31,11 @@ namespace {
 // cosmic-comp khong gui su kien `unavailable` khi mot bo go khac da giu cho:
 // no chi lang le khong bao gio kich hoat chung ta. Trieu chung la OpenKey chay
 // binh thuong nhung khong go duoc chu nao, rat kho doan. Nen phai tu kiem tra.
-QString conflictingInputMethod() {
-    static const QStringList known = {"fcitx5", "fcitx", "ibus-daemon"};
+QString conflictingInputMethod(bool usingIBus) {
+    QStringList known = {"fcitx5", "fcitx"};
+    // ibus-daemon là đối thủ của backend Wayland, nhưng lại chính là đường gõ
+    // của backend IBus. Cảnh báo nhầm chỉ làm người dùng tưởng hỏng.
+    if (!usingIBus) known.append("ibus-daemon");
     const QStringList entries =
         QDir("/proc").entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
 
@@ -141,7 +144,8 @@ int main(int argc, char** argv) {
 
     std::printf("OpenKey: dùng backend %s\n", backend->name());
 
-    if (const QString other = conflictingInputMethod(); !other.isEmpty()) {
+    const bool usingIBus = std::string(backend->name()) == "ibus";
+    if (const QString other = conflictingInputMethod(usingIBus); !other.isEmpty()) {
         const QString message =
             QString("Đang có bộ gõ khác chạy: %1.\n\n"
                     "Chỉ một bộ gõ được giữ input method của phiên Wayland. "

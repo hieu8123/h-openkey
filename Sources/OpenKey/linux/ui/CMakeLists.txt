@@ -11,5 +11,5 @@ add_executable(h-openkey
     MainWindow.cpp
     TrayIcon.cpp
 )
-target_link_libraries(h-openkey PRIVATE openkey_core openkey_wayland openkey_x11 Qt6::Widgets Qt6::Network)
+target_link_libraries(h-openkey PRIVATE openkey_core openkey_ibus openkey_wayland openkey_x11 Qt6::Widgets Qt6::Network)
 target_include_directories(h-openkey PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

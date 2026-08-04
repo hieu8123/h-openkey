@@ -8,6 +8,9 @@ add_library(openkey_ibus STATIC
     IBusDeletePlan.cpp
     IBusTypes.cpp
     IBusConnection.cpp
+    IBusEngineObject.cpp
+    IBusFactoryObject.cpp
+    IBusBackend.cpp
 )
 target_include_directories(openkey_ibus PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openkey_ibus PUBLIC openkey_core Qt6::DBus)

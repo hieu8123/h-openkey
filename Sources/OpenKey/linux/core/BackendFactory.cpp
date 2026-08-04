@@ -10,6 +10,10 @@
 
 #include <cstdlib>
 
+#ifdef OPENKEY_HAVE_IBUS
+#include "../backends/ibus/IBusBackend.h"
+#endif
+
 #ifdef OPENKEY_HAVE_WAYLAND
 #include "../backends/wayland/WaylandBackend.h"
 #endif
@@ -21,6 +25,7 @@
 namespace openkey {
 
 BackendKind backendKindFromString(const std::string& s) {
+    if (s == "ibus") return BackendKind::IBus;
     if (s == "wayland") return BackendKind::Wayland;
     if (s == "x11") return BackendKind::X11;
     return BackendKind::Auto;
@@ -28,6 +33,7 @@ BackendKind backendKindFromString(const std::string& s) {
 
 const char* backendKindToString(BackendKind k) {
     switch (k) {
+        case BackendKind::IBus: return "ibus";
         case BackendKind::Wayland: return "wayland";
         case BackendKind::X11: return "x11";
         case BackendKind::Auto: break;
@@ -40,6 +46,15 @@ namespace {
 bool envHasValue(const char* name) {
     const char* v = std::getenv(name);
     return v != nullptr && *v != '\0';
+}
+
+std::unique_ptr<IBackend> tryIBus(std::string& error) {
+#ifdef OPENKEY_HAVE_IBUS
+    return makeIBusBackend(error);
+#else
+    error = "bản build này không kèm backend IBus";
+    return nullptr;
+#endif
 }
 
 std::unique_ptr<IBackend> tryWayland(std::string& error) {
@@ -110,10 +125,11 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& noti
     // khiển, mà bảng điều khiển lại là chỗ duy nhất để chọn lại backend.
     // Đổi lại, tuyệt đối không rơi xuống trong im lặng: người gọi phải báo cho
     // người dùng biết, nếu không họ tưởng cấu hình của mình đang có hiệu lực.
-    if (requested == BackendKind::Wayland || requested == BackendKind::X11) {
+    if (requested != BackendKind::Auto) {
         std::string requestedError;
-        auto b = requested == BackendKind::Wayland ? tryWayland(requestedError)
-                                                   : tryX11(requestedError);
+        auto b = requested == BackendKind::IBus      ? tryIBus(requestedError)
+                 : requested == BackendKind::Wayland ? tryWayland(requestedError)
+                                                     : tryX11(requestedError);
         if (b) return b;
 
         std::string autoNotice;
@@ -123,6 +139,11 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& noti
         // xuống được gì thì dùng autoNotice, vì nó đã liệt kê cả hai đường.
         notice = fallback->canType() ? requestedError : autoNotice;
         return fallback;
+    }
+
+    std::string ibusError;
+    if (auto b = tryIBus(ibusError)) {
+        return b;
     }
 
     std::string waylandError;
@@ -135,8 +156,8 @@ std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& noti
         return b;
     }
 
-    notice = "không dùng được backend nào.\n  wayland: " + waylandError +
-             "\n  x11: " + x11Error;
+    notice = "không dùng được backend nào.\n  ibus: " + ibusError +
+             "\n  wayland: " + waylandError + "\n  x11: " + x11Error;
     return makeNullBackend();
 }
 

@@ -137,6 +137,9 @@ QWidget* MainWindow::buildControlGroup() {
     // "Co che" cua EVKey chinh la viec chon backend o day. Auto tu dò phien
     // lam viec; hai lua chon con lai de ep khi can chan doan.
     _backendAuto = new QRadioButton(tr("Tự động"), group);
+    _backendIBus = new QRadioButton(tr("IBus"), group);
+    _backendIBus->setToolTip(
+        tr("Đường duy nhất gõ được trên phiên Wayland của GNOME."));
     _backendWayland = new QRadioButton(tr("Wayland"), group);
     _backendX11 = new QRadioButton(tr("X11"), group);
     _backendX11->setToolTip(
@@ -145,6 +148,7 @@ QWidget* MainWindow::buildControlGroup() {
 
     auto* backendRow = new QHBoxLayout;
     backendRow->addWidget(_backendAuto);
+    backendRow->addWidget(_backendIBus);
     backendRow->addWidget(_backendWayland);
     backendRow->addWidget(_backendX11);
     backendRow->addStretch(1);
@@ -170,11 +174,13 @@ QWidget* MainWindow::buildControlGroup() {
 
     auto* backendGroup = new QButtonGroup(this);
     backendGroup->addButton(_backendAuto);
+    backendGroup->addButton(_backendIBus);
     backendGroup->addButton(_backendWayland);
     backendGroup->addButton(_backendX11);
     connect(backendGroup, &QButtonGroup::buttonToggled, this, [this] {
         if (_loading) return;
-        _config.backend = _backendWayland->isChecked() ? BackendKind::Wayland
+        _config.backend = _backendIBus->isChecked()    ? BackendKind::IBus
+                        : _backendWayland->isChecked() ? BackendKind::Wayland
                         : _backendX11->isChecked()     ? BackendKind::X11
                                                        : BackendKind::Auto;
         emit settingsChanged();
@@ -436,6 +442,7 @@ void MainWindow::refreshFromState() {
     selectValue(_inputType, vInputType);
 
     switch (_config.backend) {
+        case BackendKind::IBus: _backendIBus->setChecked(true); break;
         case BackendKind::Wayland: _backendWayland->setChecked(true); break;
         case BackendKind::X11: _backendX11->setChecked(true); break;
         case BackendKind::Auto: _backendAuto->setChecked(true); break;

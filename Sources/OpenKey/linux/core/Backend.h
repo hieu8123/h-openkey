@@ -105,8 +105,8 @@ protected:
     std::function<void(const std::string&)> _focusHandler;
 };
 
-// Backend nao se duoc dung. `Auto` dò theo thu tu wayland -> x11.
-enum class BackendKind { Auto, Wayland, X11 };
+// Backend nào sẽ được dùng. `Auto` dò theo thứ tự ibus -> wayland -> x11.
+enum class BackendKind { Auto, IBus, Wayland, X11 };
 
 BackendKind backendKindFromString(const std::string& s);
 const char* backendKindToString(BackendKind k);
