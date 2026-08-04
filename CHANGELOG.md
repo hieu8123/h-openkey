@@ -22,14 +22,9 @@ hỏng, vì sao, đang chạy bằng backend gì; đồng thời đặt lại c�
 để bảng điều khiển hiển thị đúng thứ đang chạy. Nếu không backend nào dùng được
 thì vẫn báo lỗi và dừng như cũ — lúc đó có mở bảng điều khiển cũng không cứu được.
 
-**Thông báo lỗi nay là tiếng Việt có dấu.** Toàn bộ chuỗi lỗi của các backend
-trước đây không dấu — vốn là quy ước cho *comment* trong mã nguồn, không phải cho
-chữ người dùng đọc. Nay các câu hiện trong hộp thoại và ghi ra terminal đều có
-dấu đầy đủ (`compositor không hỗ trợ …`, `không có quyền đọc /dev/input/event*: …`).
-Log gỡ rối của `OPENKEY_DEBUG` giữ nguyên không dấu, vì đó là chữ cho người sửa mã.
+**Thông báo lỗi nay là tiếng Việt có dấu**, thay vì không dấu như trước.
 
-Kèm theo: ghi nhận tình trạng GNOME/Mutter trong README đã đổi từ “suy ra từ yêu
-cầu trong code” thành đã kiểm chứng trên máy thật.
+Kèm theo: README ghi nhận tình trạng GNOME/Mutter đã kiểm chứng trên máy thật.
 
 ##### Version 1.2: (04/08/2026)
 
