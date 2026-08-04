@@ -18,7 +18,10 @@ say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 
-cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; }
+# return 0 là bắt buộc: bash lấy mã thoát của trap EXIT làm mã thoát của cả
+# script, nên nếu WORK rỗng thì `[ -n "" ]` trả 1 và --help, --uninstall báo lỗi
+# dù chạy đúng.
+cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; return 0; }
 trap cleanup EXIT
 
 # --- gỡ ra ------------------------------------------------------------------
@@ -58,12 +61,13 @@ done
 
 check_session() {
     if [ -n "${WAYLAND_DISPLAY:-}" ]; then
-        say "Phiên Wayland: dùng backend input-method-v2"
+        say "Phiên Wayland: dùng backend input-method-v2 nếu compositor có"
         # Không phải compositor nào cũng có. GNOME/Mutter thì không.
         case "${XDG_CURRENT_DESKTOP:-}" in
             *GNOME*)
                 warn "GNOME/Mutter không hiện thực zwp_input_method_v2."
-                warn "OpenKey sẽ không gõ được trên phiên Wayland của GNOME."
+                warn "OpenKey sẽ rơi xuống backend X11, mà X11 dưới XWayland chỉ"
+                warn "gõ được trong ứng dụng XWayland — ứng dụng Wayland thuần thì không."
                 warn "Hãy đăng nhập bằng phiên Xorg, hoặc dùng COSMIC/KDE/Sway."
                 ;;
         esac
@@ -77,9 +81,11 @@ check_session() {
 # Backend X11 chặn phím ngay ở kernel bằng EVIOCGRAB — cách duy nhất để phím gốc
 # không lọt tới ứng dụng trước khi bộ gõ kịp sửa. Muốn vậy phải đọc được
 # /dev/input/event*, tức là phải thuộc nhóm `input`. Cấp một lần, dùng mãi.
+#
+# Cấp cả khi đang ở phiên Wayland: compositor không cấp input-method-v2 (GNOME
+# là một) thì bộ gõ rơi xuống đúng backend X11 này, và lúc đó thiếu quyền là
+# không chạy được. Thà xin quyền lúc cài còn hơn để người dùng gặp lỗi lúc gõ.
 ensure_input_group() {
-    [ -n "${WAYLAND_DISPLAY:-}" ] && return 0
-
     if id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
         say "Đã thuộc nhóm 'input', đủ quyền chặn bàn phím"
         return 0
@@ -156,7 +162,7 @@ fetch_source() {
         SRC="$(find "$WORK" -maxdepth 2 -type d -name linux -path '*/openkey-linux-*' | head -1)"
         [ -z "$SRC" ] && SRC="$(find "$WORK" -maxdepth 3 -type d -name linux | head -1)"
     else
-        warn "Chưa có bản phát hành nào cho Linux, tải ảnh chụp nhánh master."
+        warn "Bản phát hành mới nhất không kèm gói mã nguồn, tải ảnh chụp nhánh master."
         say "Tải mã nguồn từ nhánh master"
         curl -fsSL "https://github.com/$REPO/archive/refs/heads/master.tar.gz" \
             -o "$WORK/src.tar.gz"
