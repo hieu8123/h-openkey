@@ -59,6 +59,10 @@ public:
     virtual const char* name() const = 0;
     virtual BackendCaps caps() const = 0;
 
+    // False nghia la backend nay khong go duoc chu nao (xem makeNullBackend).
+    // Ung dung van chay binh thuong, chi la khong co tieng Viet.
+    virtual bool canType() const { return true; }
+
     // Tra ve false kem thong bao qua lastError() neu khong khoi dong duoc.
     virtual bool start() = 0;
     virtual void stop() = 0;
@@ -107,13 +111,16 @@ enum class BackendKind { Auto, Wayland, X11 };
 BackendKind backendKindFromString(const std::string& s);
 const char* backendKindToString(BackendKind k);
 
-// Tra ve nullptr neu khong dung duoc backend nao; `error` giai thich da dò gi.
+// Backend rong: khong bat phim, khong go duoc chu nao, va quan trong nhat la
+// khong dung toi ban phim cua phien. Dung khi khong con duong nao go duoc.
+std::unique_ptr<IBackend> makeNullBackend();
+
+// KHONG BAO GIO tra ve nullptr. Khong dung duoc backend nao thi tra ve backend
+// rong, de bang dieu khien - cho duy nhat doi lai duoc cau hinh - van mo len duoc.
 //
-// `fallbackReason` (neu truyen vao): khi backend duoc chi dinh ro khong dung
-// duoc nhung mot backend khac thi duoc, ham van tra ve backend khac do va ghi
-// vao day ly do backend duoc chi dinh hong. Rong nghia la khong co ro xuong.
-std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& error,
-                                        std::string* fallbackReason = nullptr);
+// `notice` rong nghia la moi thu dung y muon. Khac rong la co chuyen can bao cho
+// nguoi dung: hoac da ro xuong backend khac, hoac khong go duoc chu nao ca.
+std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& notice);
 
 } // namespace openkey
 
