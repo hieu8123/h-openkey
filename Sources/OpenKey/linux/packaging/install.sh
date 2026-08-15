@@ -2,14 +2,14 @@
 #
 # Cài OpenKey cho Linux bằng một lệnh. Không cần sao chép kho mã nguồn hoặc cấu hình.
 #
-#   curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/hieu8123/h-openkey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 #
 # Gỡ cài đặt:
 #   bash install.sh --uninstall
 #
 set -euo pipefail
 
-REPO="hieu8123/OpenKey"
+REPO="hieu8123/h-openkey"
 PREFIX="${OPENKEY_PREFIX:-$HOME/.local}"
 UNIT_DIR="$HOME/.config/systemd/user"
 WORK=""

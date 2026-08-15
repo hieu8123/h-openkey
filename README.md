@@ -142,10 +142,12 @@ Tệp nhật ký chỉ chứa mã phím và văn bản do bộ gõ tạo ra. D�
 
 ## 📦 Cài đặt
 
+Bản ổn định hiện tại: [H-OpenKey Linux 1.3.0](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.0).
+
 Cài đặt bằng một lệnh, không cần sao chép kho mã nguồn:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hieu8123/h-openkey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 ```
 
 Trình cài đặt tự động cài các gói phụ thuộc thông qua `apt`, `dnf`, `pacman` hoặc
@@ -161,15 +163,15 @@ mất chữ có dấu.
 Gỡ cài đặt:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/hieu8123/h-openkey/master/Sources/OpenKey/linux/packaging/install.sh | bash -s -- --uninstall
 ```
 
 <details>
 <summary>Tự biên dịch từ mã nguồn</summary>
 
 ```sh
-git clone https://github.com/hieu8123/OpenKey.git
-cd OpenKey
+git clone https://github.com/hieu8123/h-openkey.git
+cd h-openkey
 cmake -S Sources/OpenKey/linux -B build
 cmake --build build
 ctest --test-dir build --output-on-failure

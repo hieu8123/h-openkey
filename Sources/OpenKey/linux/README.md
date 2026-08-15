@@ -129,8 +129,11 @@ các lần đổi cửa sổ focus.
 
 ## Cài đặt bằng một lệnh
 
+[Tải H-OpenKey Linux 1.3.0](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.0),
+hoặc cài đặt trực tiếp:
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hieu8123/h-openkey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 ```
 
 Trình cài đặt tự động cài các gói phụ thuộc theo bản phân phối (`apt`, `dnf`,
