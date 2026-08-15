@@ -1,5 +1,5 @@
-# Core: thuan logic. Khong duoc phep phu thuoc Wayland, X11 hay Qt — nho vay
-# toan bo logic go kiem thu duoc bang FakeBackend, khong can compositor.
+# Core: thuan logic. Khong duoc phep phu thuoc desktop hay Qt — nho vay toan bo
+# logic go kiem thu duoc bang FakeBackend, khong can phien do hoa.
 add_library(openkey_core STATIC
     AppState.cpp
     CharCodec.cpp

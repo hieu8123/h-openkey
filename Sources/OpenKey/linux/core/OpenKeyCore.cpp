@@ -51,10 +51,15 @@ bool isNonTextKey(uint32_t keycode) {
     if (keycode >= 67 && keycode <= 76) return true;   // F1..F10
     if (keycode == 95 || keycode == 96) return true;   // F11, F12
     switch (keycode) {
+        case 9:   // Escape
         case 107: // Print
         case 110: // Home
+        case 111: // Up
         case 112: // Prior (Page Up)
+        case 113: // Left
+        case 114: // Right
         case 115: // End
+        case 116: // Down
         case 117: // Next (Page Down)
         case 118: // Insert
         case 119: // Delete (xoa toi truoc)
@@ -84,25 +89,30 @@ OpenKeyCore::OpenKeyCore(IBackend& backend) : _backend(backend) {
 void OpenKeyCore::attach() {
     _backend.setKeyHandler([this](const KeyEvent& ev) { return onKey(ev); });
     _backend.setFocusHandler([this](const std::string& appId) { onFocusChanged(appId); });
+    _backend.setContextBreakHandler([this] { onMouseDown(); });
 }
 
 void OpenKeyCore::resetTypingState() {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     _sent.clear();
     startNewSession();
 }
 
 void OpenKeyCore::onMouseDown() {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     vKeyHandleEvent(vKeyEvent::Mouse, vKeyEventState::MouseDown, 0);
     _sent.clear();
 }
 
 void OpenKeyCore::setSuspended(bool suspended) {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     if (_suspended == suspended) return;
     _suspended = suspended;
     resetTypingState();
 }
 
 void OpenKeyCore::toggleLanguage() {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     vLanguage = vLanguage == 1 ? 0 : 1;
     resetTypingState();
     rememberCurrentApp();
@@ -117,6 +127,7 @@ void OpenKeyCore::toggleLanguage() {
 }
 
 void OpenKeyCore::rememberCurrentApp() {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     if (!vUseSmartSwitchKey || _focusedAppId.empty()) {
         return;
     }
@@ -126,6 +137,7 @@ void OpenKeyCore::rememberCurrentApp() {
 }
 
 void OpenKeyCore::onFocusChanged(const std::string& appId) {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     _focusedAppId = appId;
     resetTypingState();
 
@@ -244,6 +256,7 @@ void OpenKeyCore::emitResult(int backspaceCount, const std::u32string& text,
 }
 
 KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     if (_suspended) {
         return KeyVerdict::Forward;
     }

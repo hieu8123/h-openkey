@@ -1,0 +1,5 @@
+# H-OpenKey doc ban phim vat ly bang evdev va tao ban phim ao bang uinput.
+# uaccess cap ACL cho nguoi dang ngoi tai seat; group input la duong lui cho
+# distro khong dung systemd-logind. Quyen nay cho phep doc toan bo phim bam.
+SUBSYSTEM=="misc", KERNEL=="uinput", GROUP="input", MODE:="0660", TAG+="uaccess", OPTIONS+="static_node=uinput"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", GROUP="input", MODE:="0660", TAG+="uaccess"

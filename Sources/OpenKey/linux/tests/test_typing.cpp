@@ -144,6 +144,35 @@ void modifierKeyTest() {
     check("Alt roi 'vieejt'", backend.buffer, "việt");
 }
 
+void mouseContextBreakTest() {
+    std::printf("Click chuot phai ngat bo dem cua o nhap cu:\n");
+    openkey::resetAppStateToDefault();
+
+    openkey::FakeBackend backend;
+    openkey::OpenKeyCore core(backend);
+    core.attach();
+    core.resetTypingState();
+
+    for (char c : std::string("hieeu")) {
+        openkey::KeyEvent ev;
+        ev.pressed = true;
+        ev.keycode = keycodeForChar(c);
+        backend.feed(ev);
+    }
+
+    // Gia lap click sang mot o Lexical khac: van ban moi rong, con core phai
+    // bo toan bo ky uc cua tu o truoc.
+    backend.breakContext();
+    backend.buffer.clear();
+    for (char c : std::string("lee")) {
+        openkey::KeyEvent ev;
+        ev.pressed = true;
+        ev.keycode = keycodeForChar(c);
+        backend.feed(ev);
+    }
+    check("click roi 'lee'", backend.buffer, "lê");
+}
+
 } // namespace
 
 int main() {
@@ -152,6 +181,7 @@ int main() {
     modernOrthographyTest();
     multiWordTest();
     modifierKeyTest();
+    mouseContextBreakTest();
 
     if (failures == 0) {
         std::printf("\nTat ca deu dat.\n");

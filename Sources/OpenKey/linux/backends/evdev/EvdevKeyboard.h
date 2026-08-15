@@ -2,15 +2,10 @@
 //  EvdevKeyboard.h
 //  OpenKey cho Linux
 //
-//  Chan phim vat ly thang o tang kernel bang EVIOCGRAB, dung chung cho ca
-//  backend Wayland lan X11. Khac voi XRecord (chi QUAN SAT, phim goc da toi
-//  ung dung roi) hay zwp_input_method_v2_grab_keyboard (COSMIC tu choi moi
-//  popup grab khi dang co keyboard grab nao do tren seat, xem cosmic-comp
-//  #1763), EVIOCGRAB chan that o kernel: sau khi grab, KHONG con ai khac -
-//  khong X server, khong Wayland compositor - nhan duoc su kien cua thiet bi
-//  do nua. Doi lai, ta phai tu lam moi thu ma compositor/X server truoc day
-//  lam ho: theo doi trang thai Shift/Ctrl/Alt/Super/CapsLock, va tu goi
-//  forwardKey() de go lai nhung phim khong can sua.
+//  Chan phim vat ly thang o tang kernel bang EVIOCGRAB cho driver truc tiep.
+//  Sau khi grab, khong thanh phan nao khac nhan su kien vat ly cua thiet bi;
+//  driver theo doi Shift/Ctrl/Alt/Super/CapsLock va tu phat lai nhung phim
+//  khong can sua qua ban phim uinput.
 //
 //  Can quyen doc/ghi /dev/input/eventX va /dev/uinput. Xem packaging/udev
 //  de biet cach cap quyen mot lan luc cai dat.
@@ -48,7 +43,9 @@ public:
     // Do va grab moi thiet bi trong /dev/input/event* co dang la ban phim
     // that (co day du phim chu cai). Tra ve false kem ly do neu khong tim
     // duoc thiet bi nao hoac thieu quyen truy cap.
-    bool start(std::string& error);
+    bool start(std::string& error,
+               const std::vector<uint16_t>& forbiddenCodes = {},
+               const std::string& ignoredDeviceName = {});
     void stop();
 
     // Mot epoll fd duy nhat gom tat ca ban phim vat ly, de ghep vao vong lap
@@ -56,6 +53,10 @@ public:
     int epollFd() const { return _epollFd; }
     // Goi khi epollFd() san sang doc. Doc het moi thiet bi dang co du lieu.
     void dispatchEvents();
+    // Luong driver goi truc tiep ham nay de ngu trong epoll_wait; su kien phim
+    // danh thuc no ngay, khong qua event loop Qt hay poll long epoll.
+    void waitAndDispatch(int timeoutMs);
+    void wake();
 
     // Do lai /dev/input de bat nhung ban phim vua duoc cam vao. Ban phim khong
     // day va dongle USB rat hay ngat roi hien lai duoi mot node khac; khong do
@@ -63,20 +64,29 @@ public:
     void rescan();
 
     std::function<void(const EvdevKeyEvent&)> onKey;
+    std::function<void()> onContextBreak;
 
 private:
     struct Device {
         int fd = -1;
         std::string path;
+        bool grabbedKeyboard = false;
     };
 
     bool looksLikeKeyboard(int fd) const;
     void handleEvent(const struct input_event& ev);
-    bool tryAddDevice(const std::string& path, bool* permissionDenied);
+    bool tryAddDevice(const std::string& path, bool* permissionDenied,
+                      bool* forbiddenCollision, bool* heldKeys = nullptr);
+    bool tryAddPointerDevice(const std::string& path);
     void removeDevice(int fd);
 
     std::vector<Device> _devices;
+    std::vector<uint16_t> _forbiddenCodes;
+    std::string _ignoredDeviceName;
     int _epollFd = -1;
+    int _inotifyFd = -1;
+    int _inputWatch = -1;
+    int _wakeFd = -1;
 
     // Compositor/X server khong con thay phim bo tro nua sau khi grab, nen
     // phai tu dem lay: khong ai khac lam ho duoc.

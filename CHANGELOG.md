@@ -6,6 +6,60 @@
 
 ## H-OpenKey (Linux)
 
+##### Version 1.3.0: (16/08/2026)
+
+- Thêm driver trực tiếp `evdev → OpenKeyCore → uinput`. Backspace và ký tự thay
+  thế đi qua cùng một bàn phím ảo nên không cần preedit, giao thức chèn văn bản
+  hay khoảng chờ khi sửa dấu.
+- Thêm layout `xkb:custom` chứa đủ 142 ký tự tiếng Việt dựng sẵn và tổ hợp;
+  có kiểm thử biên dịch layout thật bằng libxkbcommon.
+- Sửa lỗi Chrome/XWayland nhận Backspace nhưng nuốt ký tự tiếng Việt do layout
+  cũ dùng mã evdev 352–398, tương ứng XKB keycode 360–406 trong khi X11 chỉ nhận
+  tới 255. Layout mới chỉ dành riêng hai mã modifier dưới giới hạn X11, rồi dùng
+  level 3–8 của 24 phím chữ làm carrier; không thêm timer hay độ trễ khi gõ.
+- Sửa lỗi restart driver giữa lúc đang giữ phím làm lần nhấn đi từ bàn phím
+  thật nhưng lần nhả đi từ uinput. Mutter giữ phím cũ ở trạng thái nhấn và tự
+  lặp liên tục, gây lag theo đợt hoặc làm Backspace mất tác dụng. Driver nay chỉ
+  grab từng bàn phím sau khi thiết bị đó đã nhả hết phím; không thêm delay trên
+  đường gõ.
+- Sửa lỗi từ đang gõ ở ô cũ còn nằm trong bộ đệm khi bấm sang ô nhập mới. Driver
+  quan sát nút chuột mà không grab chuột và ngắt ngữ cảnh ngay khi bấm, tránh
+  lần gõ đầu trong Facebook/Lexical bị ghép với chữ của ô trước rồi xoá, chèn
+  lại thành một cụm lớn.
+- Bàn phím uinput nay chỉ khai báo mã bàn phím, không còn khai báo nhầm dải nút
+  chuột, joystick và gamepad. Driver cũng loại chính bàn phím ảo của mình khỏi
+  nhánh quan sát con trỏ, tránh vòng tự đánh thức và phân loại thiết bị lai trong
+  libinput/Mutter.
+- Giảm độ trễ cảm nhận sau khi thêm nhận biết click: dùng event mask của evdev
+  để kernel chỉ chuyển nút bấm, không đẩy toàn bộ chuyển động chuột/touchpad vào
+  hàng đợi bàn phím. Đường gõ chạy trên một luồng `epoll_wait` riêng, tách khỏi
+  Qt/tray/DBus; hotplug dùng `inotify`, không còn quét `/dev/input` theo timer.
+- Sửa lỗi giữ hoặc gõ nhanh một phím có thể sinh chuỗi như `aaaaaa`: compositor
+  từng tự lặp từ key-down trong lúc driver lại chuyển tiếp cả `EV_KEY value=2`.
+  Phím thường nay được phát thành tap hoàn chỉnh và chỉ repeat theo một nguồn.
+- Chỉ giữ một cơ chế chạy duy nhất là driver trực tiếp. Đã xoá mã nguồn và phụ
+  thuộc của các backend IBus, Wayland input-method-v2 và X11/XTEST; cấu hình cũ
+  được tự nâng cấp sang `driver`, không còn tự động rơi sang backend khác.
+- Sửa lỗi khởi động do đọc `gsettings current` là `32` thay vì `0` từ chuỗi
+  `uint32 0`; bổ sung kiểm thử hồi quy cho đúng định dạng GNOME trả về.
+- Sửa lỗi mất toàn bộ nguyên âm có dấu do chỉ cài tệp symbols nhưng chưa đăng
+  ký layout trong `rules/evdev.xml`: GNOME âm thầm dùng layout US, nhận
+  Backspace nhưng bỏ keycode Unicode thành `NoSymbol`. Driver nay từ chối chạy
+  trong phiên GNOME chưa nạp rules mới và yêu cầu đăng xuất, đăng nhập lại.
+- Cài thêm symbols vào XKB root hệ thống: kiểm tra sau đăng nhập cho thấy GNOME
+  Shell 46 nhận đăng ký H-OpenKey trong HOME nhưng Mutter vẫn tạo keymap `us` và
+  không có các mã `<I361>...`. Trình gỡ cài đặt chỉ xoá tệp hệ thống có chữ ký
+  do chính H-OpenKey sinh ra.
+- Dùng tên layout chuẩn `xkb:custom` đã có sẵn trong xkeyboard-config, thay cho
+  tên tự đăng ký `xkb:hopenkey` mà Mutter có thể âm thầm trả về US. Không sửa
+  `evdev.xml` do distro quản lý và không ghi đè symbols `custom` của người dùng.
+- Trình cài đặt thêm quy tắc udev cho `/dev/input` và `/dev/uinput`, cài layout
+  H-OpenKey, chọn nguồn nhập đó và chỉ cài các phụ thuộc còn thực sự sử dụng.
+- Thêm công tắc khởi động cùng phiên đăng nhập trong tab Hệ thống. Khi có
+  fcitx/fcitx5, ứng dụng yêu cầu xác nhận: đồng ý thì dừng và vô hiệu hoá cơ chế
+  tự khởi động của bộ gõ kia; từ chối thì H-OpenKey tự tắt cơ chế khởi động cùng
+  phiên và thoát, không cho phép hai bộ gõ chạy đồng thời.
+
 ##### Version 1.2.1: (04/08/2026)
 
 **Chọn nhầm backend không còn làm kẹt cứng ứng dụng.**

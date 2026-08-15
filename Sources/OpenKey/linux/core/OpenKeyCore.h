@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -86,6 +87,7 @@ private:
     std::string _focusedAppId;
     bool _suspended = false;
     bool _switchKeyArmed = false;
+    std::recursive_mutex _mutex;
 
     // Neu khoang lang giua hai phim qua lau, rat co the nguoi dung da chuyen
     // sang mot o nhap khac roi quay lai ma khong co su kien doi focus nao bao

@@ -2,9 +2,8 @@
 //  Backend.h
 //  OpenKey cho Linux
 //
-//  Lop truu tuong ngan cach logic go voi cach tung phien lam viec cua Linux
-//  bat phim va tra chu ve. Wayland va X11 cai cung interface nay, nho vay
-//  toan bo logic go kiem thu duoc bang FakeBackend, khong can compositor.
+//  Lop truu tuong ngan cach logic go voi driver evdev/uinput. Nho vay toan bo
+//  logic go kiem thu duoc bang FakeBackend, khong can phien do hoa.
 //
 
 #ifndef OPENKEY_LINUX_BACKEND_H
@@ -18,7 +17,7 @@
 namespace openkey {
 
 struct BackendCaps {
-    // Xoa duoc bang delete_surrounding_text thay vi phai gui phim BackSpace.
+    // Driver hien xoa bang phim BackSpace cua thiet bi uinput.
     bool hasSurroundingText = false;
     // Biet duoc app dang focus, dieu kien de Smart Switch Key hoat dong.
     bool hasAppId = false;
@@ -29,6 +28,7 @@ struct BackendCaps {
 struct KeyEvent {
     uint32_t keycode = 0;  // keycode X11 = evdev + 8, dung nhu platforms/linux.h
     bool pressed = false;
+    bool repeat = false;   // evdev value=2
     bool shift = false;    // Shift dang giu
     bool capsLock = false; // CapsLock dang bat
     bool ctrl = false;
@@ -49,7 +49,7 @@ enum class KeyVerdict {
 // ung dung. Dem nham la xoa sai.
 struct DeleteRequest {
     uint32_t utf8Bytes = 0;   // cho delete_surrounding_text
-    uint32_t keyPresses = 0;  // so lan BackSpace neu phai dung duong fallback
+    uint32_t keyPresses = 0;  // so lan BackSpace phat qua uinput
 };
 
 class IBackend {
@@ -65,6 +65,9 @@ public:
 
     // Tra ve false kem thong bao qua lastError() neu khong khoi dong duoc.
     virtual bool start() = 0;
+    // Goi sau khi core da gan xong handler. Driver dung moc nay de bat luong
+    // doc evdev rieng, tranh chay handler truoc khi OpenKeyCore san sang.
+    virtual void activate() {}
     virtual void stop() = 0;
 
     // Xoa phan `del` ngay truoc con tro roi chen `out`. Tuyet doi khong dung
@@ -85,9 +88,7 @@ public:
     // Goi truoc khi vong lap su kien di ngu, de day cac yeu cau con ton dong.
     virtual void flush() {}
 
-    // Goi deu dan (vai mili giay mot lan). Backend nao xep hang cac thao tac va
-    // cho ung dung bao lai thi dung day lam han chot, de khong ket khi ung dung
-    // im lang. Backend khong can thi de nguyen.
+    // Goi deu dan de driver lam viec bao tri, vi du quet lai ban phim vua ket noi.
     virtual void tick() {}
 
     void setKeyHandler(std::function<KeyVerdict(const KeyEvent&)> h) {
@@ -100,13 +101,20 @@ public:
         _focusHandler = std::move(h);
     }
 
+    // Driver khong biet app-id tren Wayland nhung van co the quan sat click
+    // chuot. Click co the doi o nhap, nen core phai bo bo dem tu dang go.
+    void setContextBreakHandler(std::function<void()> h) {
+        _contextBreakHandler = std::move(h);
+    }
+
 protected:
     std::function<KeyVerdict(const KeyEvent&)> _handler;
     std::function<void(const std::string&)> _focusHandler;
+    std::function<void()> _contextBreakHandler;
 };
 
-// Backend nào sẽ được dùng. `Auto` dò theo thứ tự ibus -> wayland -> x11.
-enum class BackendKind { Auto, IBus, Wayland, X11 };
+// Ban Linux chi co mot duong: evdev -> OpenKeyCore -> uinput.
+enum class BackendKind { Driver };
 
 BackendKind backendKindFromString(const std::string& s);
 const char* backendKindToString(BackendKind k);
@@ -115,11 +123,10 @@ const char* backendKindToString(BackendKind k);
 // không đụng tới bàn phím của phiên. Dùng khi không còn đường nào gõ được.
 std::unique_ptr<IBackend> makeNullBackend();
 
-// KHÔNG BAO GIỜ trả về nullptr. Không dùng được backend nào thì trả về backend
+// KHÔNG BAO GIỜ trả về nullptr. Không dùng được driver thì trả về backend
 // rỗng, để bảng điều khiển — chỗ duy nhất đổi lại được cấu hình — vẫn mở lên được.
 //
-// `notice` rỗng nghĩa là mọi thứ đúng ý muốn. Khác rỗng là có chuyện cần báo cho
-// người dùng: hoặc đã rơi xuống backend khác, hoặc không gõ được chữ nào cả.
+// `notice` rỗng nghĩa là driver đã sẵn sàng; khác rỗng là lý do không gõ được.
 std::unique_ptr<IBackend> createBackend(BackendKind requested, std::string& notice);
 
 } // namespace openkey

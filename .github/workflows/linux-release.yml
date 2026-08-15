@@ -5,6 +5,9 @@ on:
     tags: ["linux-v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -17,9 +20,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake g++ pkg-config \
             qt6-base-dev \
-            libwayland-dev wayland-protocols \
-            libxkbcommon-dev \
-            libx11-dev libxtst-dev
+            libxkbcommon-dev
 
       - name: Build
         run: |
@@ -33,8 +34,8 @@ jobs:
 
       - name: Đóng gói
         run: |
-          # Gói mã nguồn: script cài đặt build tại máy người dùng, nên khong
-          # phu thuoc phien ban Qt6 cua may build.
+          # Gói mã nguồn: script cài đặt build tại máy người dùng, nên không
+          # phụ thuộc phiên bản Qt6 của máy build.
           version="${GITHUB_REF_NAME#linux-v}"
           [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
           name="openkey-linux-${version}"
@@ -56,4 +57,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
           files: "*.tar.gz"

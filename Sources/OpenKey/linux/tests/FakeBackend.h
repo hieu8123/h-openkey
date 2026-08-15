@@ -57,6 +57,10 @@ public:
         }
     }
 
+    void breakContext() {
+        if (_contextBreakHandler) _contextBreakHandler();
+    }
+
     std::string buffer;
     int deleteCalls = 0;
     int forwardCalls = 0;

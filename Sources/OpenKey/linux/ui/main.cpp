@@ -4,61 +4,36 @@
 //
 
 #include <QApplication>
+#include <QFileInfo>
+#include <QLibraryInfo>
 #include <QMessageBox>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QSystemTrayIcon>
 #include <QWindow>
 
-#include <QDir>
-#include <QFile>
-
 #include <cstdio>
 #include <cstdlib>
 #include <csignal>
+#include <cstring>
 #include <unistd.h>
 
 #include "Backend.h"
 #include "Config.h"
+#include "DriverKeymap.h"
 #include "OpenKeyCore.h"
 #include "MainWindow.h"
 #include "SingleInstance.h"
+#include "StartupManager.h"
 #include "Theme.h"
 #include "TrayIcon.h"
 
 namespace {
 
-// cosmic-comp khong gui su kien `unavailable` khi mot bo go khac da giu cho:
-// no chi lang le khong bao gio kich hoat chung ta. Trieu chung la OpenKey chay
-// binh thuong nhung khong go duoc chu nao, rat kho doan. Nen phai tu kiem tra.
-QString conflictingInputMethod(bool usingIBus) {
-    QStringList known = {"fcitx5", "fcitx"};
-    // ibus-daemon là đối thủ của backend Wayland, nhưng lại chính là đường gõ
-    // của backend IBus. Cảnh báo nhầm chỉ làm người dùng tưởng hỏng.
-    if (!usingIBus) known.append("ibus-daemon");
-    const QStringList entries =
-        QDir("/proc").entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-
-    for (const QString& entry : entries) {
-        bool isPid = false;
-        entry.toInt(&isPid);
-        if (!isPid) continue;
-
-        QFile comm("/proc/" + entry + "/comm");
-        if (!comm.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-        const QString name = QString::fromUtf8(comm.readLine()).trimmed();
-        if (known.contains(name)) {
-            return name;
-        }
-    }
-    return {};
-}
-
 // SIGTERM/SIGINT (systemctl stop, kill thuong) khong tu goi app.exec() thoat,
-// nen backend->stop() phia duoi main() khong duoc chay: Wayland thi khong sao,
-// nhung X11Backend can stop() de tra lai cac keycode da muon, neu khong lan
-// chay sau se can kiet dan. Bat tin hieu bang self-pipe roi thoat qua duong
-// Qt binh thuong, thay vi de mac dinh giet tien trinh ngay lap tuc.
+// nen backend->stop() phia duoi main() khong duoc chay. Bat tin hieu bang
+// self-pipe roi thoat qua duong Qt binh thuong de driver nha EVIOCGRAB va huy
+// ban phim uinput mot cach sach se.
 int g_signalPipe[2] = {-1, -1};
 
 void handleTermSignal(int) {
@@ -67,9 +42,58 @@ void handleTermSignal(int) {
     (void)ignored;
 }
 
+void selectAvailableQtPlatform() {
+    if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) return;
+
+    const QString platforms = QLibraryInfo::path(QLibraryInfo::PluginsPath) +
+                              "/platforms/";
+    const bool hasWayland =
+        QFileInfo::exists(platforms + "libqwayland-egl.so") ||
+        QFileInfo::exists(platforms + "libqwayland-generic.so");
+    if (!hasWayland && QFileInfo::exists(platforms + "libqxcb.so")) {
+        // Chi chon cach ve giao dien Qt. Driver ban phim van la evdev/uinput va
+        // khong thay doi theo QPA platform.
+        qputenv("QT_QPA_PLATFORM", "xcb");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
+    // Lenh cai dat chay khong giao dien, truoc ca QApplication va khoa mot-ban.
+    // Installer goi duong nay de layout va ma trong binary luon cung mot phien ban.
+    const bool installDriverLayout =
+        argc == 2 && std::strcmp(argv[1], "--install-driver-layout") == 0;
+    const bool configureDriver =
+        argc == 2 && std::strcmp(argv[1], "--configure-driver") == 0;
+    if (installDriverLayout || configureDriver) {
+        std::string error;
+        if (!openkey::installDriverXkbLayout(error)) {
+            std::fprintf(stderr, "H-OpenKey: %s\n", error.c_str());
+            return 1;
+        }
+        if (installDriverLayout) {
+            std::printf("Đã sinh symbols XKB H-OpenKey.\n");
+            return 0;
+        }
+        openkey::Config config;
+        config.load();
+        config.backend = openkey::BackendKind::Driver;
+        if (!config.save()) {
+            std::fprintf(stderr, "H-OpenKey: không lưu được cấu hình driver\n");
+            return 1;
+        }
+        std::string activationError;
+        if (!openkey::driverXkbLayoutIsActive(activationError)) {
+            std::printf("Đã cài layout XKB và chọn driver trực tiếp. %s.\n",
+                        activationError.c_str());
+        } else {
+            std::printf("Đã cài layout XKB và chọn driver trực tiếp.\n");
+        }
+        return 0;
+    }
+
+    selectAvailableQtPlatform();
     QApplication app(argc, argv);
     QApplication::setApplicationName("H-OpenKey");
     QApplication::setApplicationDisplayName("H-OpenKey");
@@ -100,9 +124,8 @@ int main(int argc, char** argv) {
     std::string notice;
     auto backend = openkey::createBackend(config.backend, notice);
 
-    // Khởi động hỏng thì cũng không tắt ứng dụng: đổi sang backend rỗng rồi chạy
-    // tiếp. Tắt hẳn là kẹt cứng — không chạy thì không mở được bảng điều khiển,
-    // mà bảng điều khiển lại là chỗ duy nhất để đổi lại cấu hình.
+    // Driver khởi động hỏng thì vẫn giữ giao diện và khay để người dùng xem lỗi,
+    // nhưng tuyệt đối không rơi sang một cơ chế gõ khác.
     if (!backend->start()) {
         std::string reason = backend->lastError();
         if (!notice.empty()) reason = notice + "\n" + reason;
@@ -112,29 +135,13 @@ int main(int argc, char** argv) {
     }
 
     if (!notice.empty()) {
-        const QString requested =
-            QString::fromUtf8(openkey::backendKindToString(config.backend));
-        QString message;
-        if (backend->canType()) {
-            // Đã rơi xuống được một backend thật. Đổi luôn cấu hình sang Auto: bảng
-            // điều khiển phải hiện đúng thứ đang chạy, và lần mở sau không lặp lại
-            // màn hình cảnh báo này.
-            config.backend = openkey::BackendKind::Auto;
-            message = QString("Không dùng được backend “%1” như cấu hình đang chọn:\n\n%2\n\n"
-                              "OpenKey đã chuyển về “Tự động” và đang chạy bằng backend %3. "
-                              "Bạn có thể chọn lại trong bảng điều khiển.")
-                          .arg(requested, QString::fromStdString(notice),
-                               QString::fromUtf8(backend->name()));
-        } else {
-            // Không còn đường nào gõ được. Vẫn chạy, vẫn có khay và bảng điều
-            // khiển — chỉ là không gõ được tiếng Việt, và tuyệt đối không đụng
-            // tới bàn phím của phiên.
-            message = QString("OpenKey chưa gõ được tiếng Việt trong phiên này:\n\n%1\n\n"
-                              "Ứng dụng vẫn chạy để bạn mở bảng điều khiển, và bàn phím "
-                              "của bạn không bị đụng tới. Trên phiên Wayland của GNOME, "
-                              "cách xử lý là đăng nhập lại bằng phiên Xorg.")
-                          .arg(QString::fromStdString(notice));
-        }
+        const QString message =
+            QString("Driver trực tiếp chưa khởi động được:\n\n%1\n\n"
+                    "Ứng dụng vẫn chạy để bạn mở bảng điều khiển, nhưng không bắt "
+                    "bàn phím và không tự chuyển sang IBus, X11 hay input-method-v2. "
+                    "Hãy kiểm tra nguồn nhập xkb:custom, quyền /dev/input và "
+                    "/dev/uinput, sau đó đăng xuất rồi đăng nhập lại.")
+                .arg(QString::fromStdString(notice));
         std::fprintf(stderr, "OpenKey: %s\n", message.toUtf8().constData());
         QMessageBox::warning(nullptr, "H-OpenKey", message);
     }
@@ -144,26 +151,37 @@ int main(int argc, char** argv) {
 
     std::printf("OpenKey: dùng backend %s\n", backend->name());
 
-    const bool usingIBus = std::string(backend->name()) == "ibus";
-    if (const QString other = conflictingInputMethod(usingIBus); !other.isEmpty()) {
-        const QString message =
-            QString("Đang có bộ gõ khác chạy: %1.\n\n"
-                    "Chỉ một bộ gõ được giữ input method của phiên Wayland. "
-                    "OpenKey sẽ khởi động nhưng không gõ được chữ nào cho tới khi "
-                    "bạn tắt hẳn %1 rồi mở lại OpenKey.")
-                .arg(other);
-        std::fprintf(stderr, "OpenKey: %s\n", message.toUtf8().constData());
-        QMessageBox::warning(nullptr, "H-OpenKey", message);
-    }
-
-    // Gan file descriptor cua backend vao vong lap su kien cua Qt. Nho vay chi
-    // can mot tien trinh, khong phai tach daemon rieng.
-    // Backend rỗng không bắt phím nên không có fd nào để theo dõi.
-    if (backend->eventFd() >= 0) {
-        auto* notifier =
-            new QSocketNotifier(backend->eventFd(), QSocketNotifier::Read, &app);
-        QObject::connect(notifier, &QSocketNotifier::activated, &app,
-                         [&backend] { backend->dispatchEvents(); });
+    const QStringList conflicts = openkey::conflictingInputMethods();
+    if (!conflicts.isEmpty()) {
+        const QString names = conflicts.join(", ");
+        const auto answer = QMessageBox::question(
+            nullptr, "Xung đột bộ gõ",
+            QString("Đang có bộ gõ khác chạy hoặc được thiết lập khởi động cùng "
+                    "phiên đăng nhập: %1.\n\n"
+                    "Dừng bộ gõ đó và vô hiệu hoá cơ chế tự khởi động của nó để "
+                    "tiếp tục sử dụng H-OpenKey?")
+                .arg(names),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+        QString error;
+        if (answer != QMessageBox::Yes ||
+            !openkey::disableInputMethods(conflicts, error)) {
+            QString ignored;
+            openkey::setOpenKeyAutoStartEnabled(false, ignored);
+            const QString reason = answer == QMessageBox::Yes
+                                       ? "Không tắt được bộ gõ khác: " + error
+                                       : "Bạn đã chọn giữ bộ gõ hiện tại.";
+            QMessageBox::information(
+                nullptr, "H-OpenKey",
+                reason + "\n\nH-OpenKey sẽ tắt và không khởi động cùng phiên đăng "
+                         "nhập để hai bộ gõ không chạy đồng thời.");
+            backend->stop();
+            return 0;
+        }
+        QMessageBox::information(
+            nullptr, "Đã tắt bộ gõ cũ",
+            "Đã tắt bộ gõ gây xung đột. H-OpenKey dùng driver bàn phím trực "
+            "tiếp, không dùng IBus/preedit. Hãy đăng xuất rồi đăng nhập lại "
+            "để môi trường của phiên được cập nhật đầy đủ.");
     }
 
     QSocketNotifier* signalNotifier = nullptr;
@@ -175,19 +193,17 @@ int main(int argc, char** argv) {
                          [] { QApplication::quit(); });
     }
 
-    // Nhip cho hang doi xuat chu cua backend. Backend Wayland xep hang cac thao
-    // tac va cho ung dung bao da xu ly xong; neu ung dung im lang thi nhip nay la
-    // han chot de day tiep, khong de chu ket lai.
-    QTimer outputTick;
-    outputTick.setInterval(5);
-    QObject::connect(&outputTick, &QTimer::timeout, &app, [&backend] { backend->tick(); });
-    outputTick.start();
-
     openkey::TrayIcon tray(config, core);
 
     // Smart Switch Key co the tu doi ngon ngu khi chuyen ung dung; bieu tuong
     // khay phai phan anh dieu do, neu khong nguoi dung khong biet dang o che do nao.
-    core.onStateChanged = [&tray] { tray.refresh(); };
+    core.onStateChanged = [&tray] {
+        QMetaObject::invokeMethod(&tray, [&tray] { tray.refresh(); },
+                                  Qt::QueuedConnection);
+    };
+    // Core va callback giao dien da san sang; tu day luong epoll rieng moi bat
+    // dau doc phím. Qt khong con nam tren duong go.
+    backend->activate();
 
     openkey::MainWindow window(config, core);
     window.resize(680, 520);
@@ -212,12 +228,13 @@ int main(int argc, char** argv) {
                          core.setSuspended(focused != nullptr &&
                                            focused == window.windowHandle());
                      });
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
-        tray.show();
-    } else {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         std::fprintf(stderr,
-                     "OpenKey: không có khay hệ thống, vẫn chạy nhưng không có biểu tượng\n");
+                     "OpenKey: khay hệ thống chưa sẵn sàng, sẽ đăng ký biểu tượng khi khay xuất hiện\n");
     }
+    // Qt tự thêm biểu tượng khi khay xuất hiện sau thời điểm ứng dụng khởi động,
+    // nhưng chỉ khi QSystemTrayIcon đã được đặt visible từ trước.
+    tray.show();
 
     // Dung khi lam giao dien: tu chup cua so ra tep roi thoat, de doi chieu
     // thiet ke ma khong can cong cu chup anh cua desktop.
@@ -233,9 +250,10 @@ int main(int argc, char** argv) {
     backend->flush();
     const int result = app.exec();
 
+    // Dung luong ban phim truoc khi doc va luu cac bien engine tu UI thread.
+    backend->stop();
     config.save();
     config.saveMacroTable();
     config.saveSmartSwitchTable();
-    backend->stop();
     return result;
 }

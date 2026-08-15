@@ -6,7 +6,6 @@
 #include "MainWindow.h"
 
 #include <QApplication>
-#include <QButtonGroup>
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QFileInfo>
@@ -20,7 +19,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QRadioButton>
+#include <QTimer>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -31,6 +30,7 @@
 #include "DebugLog.h"
 #include "Engine.h"
 #include "OpenKeyCore.h"
+#include "StartupManager.h"
 
 namespace openkey {
 namespace {
@@ -134,26 +134,12 @@ QWidget* MainWindow::buildControlGroup() {
     grid->addWidget(new QLabel(tr("Kiểu gõ")), 1, 0);
     grid->addWidget(_inputType, 1, 1);
 
-    // "Co che" cua EVKey chinh la viec chon backend o day. Auto tu dò phien
-    // lam viec; hai lua chon con lai de ep khi can chan doan.
-    _backendAuto = new QRadioButton(tr("Tự động"), group);
-    _backendIBus = new QRadioButton(tr("IBus"), group);
-    _backendIBus->setToolTip(
-        tr("Đường duy nhất gõ được trên phiên Wayland của GNOME."));
-    _backendWayland = new QRadioButton(tr("Wayland"), group);
-    _backendX11 = new QRadioButton(tr("X11"), group);
-    _backendX11->setToolTip(
-        tr("Dùng cho phiên đăng nhập X11. Trên X11 không chặn được phím nên "
-           "chữ có thể nhấp nháy nhẹ."));
-
-    auto* backendRow = new QHBoxLayout;
-    backendRow->addWidget(_backendAuto);
-    backendRow->addWidget(_backendIBus);
-    backendRow->addWidget(_backendWayland);
-    backendRow->addWidget(_backendX11);
-    backendRow->addStretch(1);
     grid->addWidget(new QLabel(tr("Cơ chế")), 2, 0);
-    grid->addLayout(backendRow, 2, 1);
+    auto* driverLabel = new QLabel(
+        tr("Driver trực tiếp (evdev → OpenKeyCore → uinput)"), group);
+    driverLabel->setToolTip(
+        tr("Cơ chế duy nhất; không dùng IBus, preedit hay backend dự phòng."));
+    grid->addWidget(driverLabel, 2, 1);
 
     grid->setColumnStretch(1, 1);
 
@@ -169,20 +155,6 @@ QWidget* MainWindow::buildControlGroup() {
         if (_loading) return;
         vInputType = _inputType->currentData().toInt();
         _core.resetTypingState();
-        emit settingsChanged();
-    });
-
-    auto* backendGroup = new QButtonGroup(this);
-    backendGroup->addButton(_backendAuto);
-    backendGroup->addButton(_backendIBus);
-    backendGroup->addButton(_backendWayland);
-    backendGroup->addButton(_backendX11);
-    connect(backendGroup, &QButtonGroup::buttonToggled, this, [this] {
-        if (_loading) return;
-        _config.backend = _backendIBus->isChecked()    ? BackendKind::IBus
-                        : _backendWayland->isChecked() ? BackendKind::Wayland
-                        : _backendX11->isChecked()     ? BackendKind::X11
-                                                       : BackendKind::Auto;
         emit settingsChanged();
     });
 
@@ -349,6 +321,12 @@ QWidget* MainWindow::buildSystemTab() {
     auto* grid = new QGridLayout;
 
     int row = 0;
+    _autoStart = new QCheckBox(tr("Khởi động H-OpenKey cùng phiên đăng nhập"), page);
+    _autoStart->setToolTip(
+        tr("Nếu có bộ gõ khác như fcitx5, H-OpenKey sẽ hỏi trước khi tắt nó."));
+    grid->addWidget(_autoStart, row++, 0);
+    connect(_autoStart, &QCheckBox::toggled, this, &MainWindow::setAutoStart);
+
     addCheck(grid, row++, 0, tr("Chuyển chế độ thông minh theo ứng dụng"),
              &vUseSmartSwitchKey,
              tr("Nhớ ứng dụng nào dùng tiếng Việt, ứng dụng nào dùng tiếng Anh"));
@@ -362,8 +340,8 @@ QWidget* MainWindow::buildSystemTab() {
 
     auto* info = new QLabel(
         tr("Cấu hình lưu tại ~/.config/openkey/config.json\n"
-           "Chỉ một bộ gõ được giữ input method của phiên Wayland: phải tắt hẳn "
-           "fcitx5 và ibus thì OpenKey mới gõ được."),
+           "H-OpenKey chỉ đọc phím vật lý qua evdev và phát một bàn phím ảo "
+           "uinput; không có backend dự phòng và không dùng preedit."),
         page);
     info->setWordWrap(true);
     layout->addSpacing(12);
@@ -372,16 +350,77 @@ QWidget* MainWindow::buildSystemTab() {
     return page;
 }
 
-// Loi go thuong chi tai hien duoc tren may nguoi dung, va gan het la loi thu tu
-// race condition — doan mo khong ra. Nut nay de ho tu ghi lai dung luc loi xay
-// ra roi gui file log di.
+void MainWindow::setAutoStart(bool enabled) {
+    if (_loading) return;
+
+    if (enabled) {
+        const QStringList conflicts = conflictingInputMethods();
+        if (!conflicts.isEmpty()) {
+            const QString names = conflicts.join(", ");
+            const auto answer = QMessageBox::question(
+                this, tr("Xung đột bộ gõ"),
+                tr("Đang có bộ gõ khác chạy hoặc được thiết lập khởi động cùng "
+                   "phiên đăng nhập: %1.\n\n"
+                   "Dừng bộ gõ đó và vô hiệu hoá cơ chế tự khởi động của nó để "
+                   "chỉ sử dụng H-OpenKey?")
+                    .arg(names),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+            if (answer != QMessageBox::Yes) {
+                QString ignored;
+                setOpenKeyAutoStartEnabled(false, ignored);
+                _loading = true;
+                _autoStart->setChecked(false);
+                _loading = false;
+                QMessageBox::information(
+                    this, tr("H-OpenKey"),
+                    tr("H-OpenKey sẽ tắt để không chạy song song với %1.").arg(names));
+                QTimer::singleShot(0, qApp, &QApplication::quit);
+                return;
+            }
+
+            QString disableError;
+            if (!disableInputMethods(conflicts, disableError)) {
+                QString ignored;
+                setOpenKeyAutoStartEnabled(false, ignored);
+                QMessageBox::warning(
+                    this, tr("Không tắt được bộ gõ khác"),
+                    tr("%1\n\nH-OpenKey sẽ tắt và không khởi động cùng phiên đăng "
+                       "nhập để tránh hai bộ gõ chạy đồng thời.")
+                        .arg(disableError));
+                _loading = true;
+                _autoStart->setChecked(false);
+                _loading = false;
+                QTimer::singleShot(0, qApp, &QApplication::quit);
+                return;
+            }
+            QMessageBox::information(
+                this, tr("Đã tắt bộ gõ cũ"),
+                tr("Đã tắt bộ gõ gây xung đột. H-OpenKey dùng driver bàn phím "
+                   "trực tiếp, không dùng IBus/preedit. Hãy đăng xuất rồi đăng "
+                   "nhập lại để môi trường của phiên được cập nhật đầy đủ."));
+        }
+    }
+
+    QString error;
+    if (!setOpenKeyAutoStartEnabled(enabled, error)) {
+        enabled = false;
+        QMessageBox::warning(this, tr("H-OpenKey"),
+                             tr("Không đổi được thiết lập khởi động:\n%1").arg(error));
+    }
+    _loading = true;
+    _autoStart->setChecked(enabled);
+    _loading = false;
+}
+
+// Lỗi gõ thường chỉ tái hiện trên máy người dùng và chủ yếu liên quan đến thứ tự
+// sự kiện. Công cụ này cho phép ghi lại dữ liệu đúng thời điểm xảy ra lỗi.
 QWidget* MainWindow::buildDebugGroup(QWidget* parent) {
     auto* group = new QGroupBox(tr("Chẩn đoán lỗi gõ"), parent);
     auto* box = new QVBoxLayout(group);
 
     auto* hint = new QLabel(
         tr("Gặp lỗi gõ? Bấm nút bên dưới rồi gõ lại cho lỗi tái hiện, sau đó "
-           "dừng ghi và gửi file nhật ký cho người phát triển."),
+           "dừng ghi và gửi tệp nhật ký cho người phát triển."),
         group);
     hint->setWordWrap(true);
     box->addWidget(hint);
@@ -421,7 +460,7 @@ void MainWindow::toggleDebugLogging() {
     const bool wantOn = !openkey::debugLoggingEnabled();
     if (!openkey::setDebugLogging(wantOn)) {
         QMessageBox::warning(this, tr("H-OpenKey"),
-                             tr("Không mở được file nhật ký:\n%1")
+                             tr("Không mở được tệp nhật ký:\n%1")
                                  .arg(QString::fromStdString(openkey::debugLogPath())));
     }
     refreshDebugUi();
@@ -431,7 +470,7 @@ void MainWindow::refreshDebugUi() {
     const bool on = openkey::debugLoggingEnabled();
     _debugToggle->setText(on ? tr("Dừng ghi nhật ký") : tr("Bắt đầu ghi nhật ký"));
     _debugStatus->setText(
-        (on ? tr("Đang ghi vào:\n%1") : tr("File nhật ký:\n%1"))
+        (on ? tr("Đang ghi vào:\n%1") : tr("Tệp nhật ký:\n%1"))
             .arg(QString::fromStdString(openkey::debugLogPath())));
 }
 
@@ -440,13 +479,7 @@ void MainWindow::refreshFromState() {
 
     selectValue(_codeTable, vCodeTable);
     selectValue(_inputType, vInputType);
-
-    switch (_config.backend) {
-        case BackendKind::IBus: _backendIBus->setChecked(true); break;
-        case BackendKind::Wayland: _backendWayland->setChecked(true); break;
-        case BackendKind::X11: _backendX11->setChecked(true); break;
-        case BackendKind::Auto: _backendAuto->setChecked(true); break;
-    }
+    _autoStart->setChecked(isOpenKeyAutoStartEnabled());
 
     for (const auto& bound : _checks) {
         bound.box->setChecked(*bound.value != 0);
@@ -470,6 +503,7 @@ void MainWindow::applyToEngine() {
 
 void MainWindow::restoreDefaults() {
     resetAppStateToDefault();
+    _config.backend = BackendKind::Driver;
     onTableCodeChange();
     _core.resetTypingState();
     refreshFromState();

@@ -19,18 +19,27 @@ constexpr char kShowPanelMessage[] = "show-control-panel";
 
 SingleInstance::SingleInstance(QObject* parent) : QObject(parent) {
     connect(&_server, &QLocalServer::newConnection, this, [this] {
-        QLocalSocket* client = _server.nextPendingConnection();
-        if (!client) {
-            return;
+        while (_server.hasPendingConnections()) {
+            QLocalSocket* client = _server.nextPendingConnection();
+            if (!client) continue;
+
+            auto processMessage = [this, client] {
+                const QByteArray message = client->readAll();
+                if (message.startsWith(kShowPanelMessage)) {
+                    emit showControlPanelRequested();
+                    client->write("ok");
+                    client->flush();
+                }
+                client->disconnectFromServer();
+            };
+            connect(client, &QLocalSocket::readyRead, this, processMessage);
+            connect(client, &QLocalSocket::disconnected, client,
+                    &QLocalSocket::deleteLater);
+
+            // Client có thể đã gửi xong trước khi event loop xử lý newConnection;
+            // khi đó tín hiệu readyRead đã trôi qua và phải đọc buffer ngay.
+            if (client->bytesAvailable() > 0) processMessage();
         }
-        connect(client, &QLocalSocket::readyRead, this, [this, client] {
-            const QByteArray message = client->readAll();
-            if (message.startsWith(kShowPanelMessage)) {
-                emit showControlPanelRequested();
-            }
-            client->disconnectFromServer();
-        });
-        connect(client, &QLocalSocket::disconnected, client, &QLocalSocket::deleteLater);
     });
 }
 
@@ -49,6 +58,9 @@ bool SingleInstance::notifyRunningInstance() {
     socket.write(kShowPanelMessage);
     socket.flush();
     socket.waitForBytesWritten(300);
+    // Giữ kết nối tới khi tiến trình chính xác nhận đã nhận yêu cầu. Nếu đóng
+    // ngay sau khi ghi, dữ liệu có thể bị mất trước khi server gắn readyRead.
+    socket.waitForReadyRead(1000);
     socket.disconnectFromServer();
     return true;
 }

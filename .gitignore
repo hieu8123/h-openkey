@@ -11,4 +11,5 @@
 
 # Linux build
 /build/
+/build-linux/
 /Sources/OpenKey/linux/build/

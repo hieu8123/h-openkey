@@ -22,7 +22,6 @@ class QComboBox;
 class QGridLayout;
 class QLabel;
 class QPushButton;
-class QRadioButton;
 
 namespace openkey {
 
@@ -59,6 +58,7 @@ private:
     void readHotkeyFromUi();
     void writeHotkeyToUi();
     QWidget* buildSystemTab();
+    void setAutoStart(bool enabled);
     QWidget* buildDebugGroup(QWidget* parent);
     void toggleDebugLogging();
     void refreshDebugUi();
@@ -76,15 +76,11 @@ private:
 
     QComboBox* _codeTable = nullptr;
     QComboBox* _inputType = nullptr;
-    QRadioButton* _backendAuto = nullptr;
-    QRadioButton* _backendIBus = nullptr;
-    QRadioButton* _backendWayland = nullptr;
-    QRadioButton* _backendX11 = nullptr;
-
     QCheckBox* _hotkeyCtrl = nullptr;
     QCheckBox* _hotkeyAlt = nullptr;
     QCheckBox* _hotkeyShift = nullptr;
     QCheckBox* _hotkeySuper = nullptr;
+    QCheckBox* _autoStart = nullptr;
     QComboBox* _hotkeyKey = nullptr;
     QLabel* _hotkeyPreview = nullptr;
     QPushButton* _debugToggle = nullptr;

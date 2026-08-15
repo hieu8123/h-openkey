@@ -35,7 +35,7 @@ public:
     void loadSmartSwitchTable() const;
     void saveSmartSwitchTable() const;
 
-    BackendKind backend = BackendKind::Auto;
+    BackendKind backend = BackendKind::Driver;
 
 private:
     std::string configPath() const;

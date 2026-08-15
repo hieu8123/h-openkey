@@ -3,137 +3,88 @@
 Bộ gõ tiếng Việt cho Linux.
 
 Đây là bản **fork** của [OpenKey](https://github.com/tuyenvm/OpenKey) của Tuyên Mai,
-làm ra **chỉ để hỗ trợ người dùng Linux**. Công lao thiết kế bộ gõ và toàn bộ
-engine xử lý tiếng Việt thuộc về dự án gốc; phần Linux dùng **chung một engine
-không sửa đổi** với bản macOS và Windows, nên cách gõ giống hệt.
+được phát triển **dành riêng cho người dùng Linux**. Công lao thiết kế bộ gõ và toàn bộ
+engine xử lý tiếng Việt thuộc về dự án gốc; phần Linux sử dụng **chung một engine
+không sửa đổi** với các bản macOS và Windows, nên hành vi nhập liệu nhất quán.
 
-Bản Linux có tên `h-openkey` để không lẫn với bản gốc.
+Bản Linux có tên `h-openkey` để phân biệt với dự án gốc.
 
-OpenKey **không** chạy trên ibus hay fcitx5. Nó tự bắt bàn phím, và cách bắt khác
-nhau theo phiên làm việc:
+H-OpenKey chỉ dùng driver trực tiếp. Driver đọc sự kiện từ
+`/dev/input/event*`, gọi OpenKeyCore và phát kết quả qua `/dev/uinput`. GNOME,
+Chrome, Electron và terminal nhìn thấy đầu ra như từ một bàn phím phần cứng;
+không có preedit hay giao thức chèn văn bản của ứng dụng.
 
-| Phiên | Bắt phím | Trả chữ về |
+| Cơ chế duy nhất | Tiếp nhận phím | Xuất văn bản |
 | --- | --- | --- |
-| X11 / Xorg | `EVIOCGRAB` trên `/dev/input/event*` (tầng kernel) | XTEST + keycode gán sẵn |
-| Wayland | `zwp_input_method_v2` | BackSpace ảo + `commit_string` |
+| Driver trực tiếp | `EVIOCGRAB` trên `/dev/input/event*` | Bàn phím kernel `/dev/uinput` + layout XKB cố định |
 
-Không dùng preedit ở cả hai — đó là nguồn gốc của lỗi gạch chân và nhân đôi chữ
-mà OpenKey sinh ra để loại bỏ.
+## Driver Wayland: evdev → OpenKeyCore → uinput
+
+Đây là đường gần nhất với `SendInput` của Windows mà Linux cung cấp ở user space:
+
+1. Tạo `H-OpenKey Virtual Keyboard` qua uinput và chờ compositor nhận thiết bị.
+2. Kiểm tra bàn phím thật không dùng hai keycode modifier dành riêng.
+3. Dùng `EVIOCGRAB` để sự kiện vật lý không đi thẳng tới compositor.
+4. Phím không cần sửa được phát lại nguyên mã; kết quả Telex/VNI được phát thành
+   Backspace và các keycode Unicode qua cùng bàn phím ảo.
+5. Quan sát nút chuột mà không grab thiết bị trỏ; mỗi lần bấm sẽ ngắt bộ đệm của
+   ô nhập cũ trước khi người dùng gõ vào ô mới. Event mask của evdev lọc bỏ
+   chuyển động chuột/touchpad trước khi chúng vào hàng đợi của driver.
+6. Khi tiến trình thoát hoặc gặp lỗi, đóng file descriptor sẽ huỷ bàn phím ảo
+   và tự động trả grab cho thiết bị thật.
+
+Driver không grab một thiết bị giữa lúc có phím đang được giữ. Việc này bảo đảm
+lần nhấn và lần nhả luôn đi qua cùng một thiết bị đối với Mutter, tránh trạng
+thái phím kẹt và tự lặp sau khi service khởi động lại. Thiết bị bị bỏ qua tạm
+thời sẽ được nhận khi `inotify` báo thay đổi thiết bị hoặc khi service khởi động
+lại sau khi người dùng nhả hết phím.
+
+Layout dùng tên `custom` đã được xkeyboard-config đăng ký sẵn. Trình cài đặt sinh
+một bản symbols trong thư mục người dùng rồi cài bản đó thành
+`/usr/share/X11/xkb/symbols/custom` bằng `sudo`, vì Mutter 46 không đọc symbols
+người dùng khi tạo keymap cho seat. Trình cài đặt không sửa `evdev.xml` của
+distro và không ghi đè một tệp `custom` có sẵn của người dùng. Phần symbols kế
+thừa `us(basic)`. Hai keycode dưới giới hạn
+X11 làm `ISO_Level3_Shift` và `ISO_Level5_Shift`; 24 phím chữ giữ nguyên ASCII ở
+level 1/2 và dùng sáu level còn lại cho 142 code point tiếng Việt dựng sẵn và tổ
+hợp. Hai mã modifier được chọn ngoài các ánh xạ `inet(evdev)` và được kiểm tra
+va chạm trên từng máy trước khi grab. Cách này tránh lỗi bản cũ dùng mã evdev từ
+352 trở lên: Mutter Wayland nhận được nhưng XWayland chỉ hỗ trợ keycode tới 255,
+khiến Chrome nhận Backspace mà không nhận ký tự thay thế.
+
+Ví dụ, chuỗi Telex `dd` đi qua duy nhất kênh EV_KEY:
+
+```text
+d lần 1  → EV_KEY(KEY_D)
+d lần 2  → EV_KEY(KEY_BACKSPACE) → modifier + EV_KEY(phím carrier của “đ”)
+```
+
+Không có timer trên đường gõ, không đổi keymap khi đang nhập và không trộn sự
+kiện bàn phím với `CommitText`. Bộ test dùng libxkbcommon biên dịch layout thật,
+phát từng tổ hợp level và đối chiếu đủ 142 code point.
+
+Luồng bàn phím ngủ trực tiếp trong `epoll_wait` và được kernel đánh thức khi có
+sự kiện; Qt, biểu tượng khay và DBus không nằm trên đường gõ. Việc thêm hoặc gỡ
+thiết bị được theo dõi bằng `inotify`, không quét `/dev/input` định kỳ. Phím
+thường được phát thành tap hoàn chỉnh để compositor không tự tạo một luồng
+repeat song song với `EV_KEY value=2` của bàn phím thật.
+
+Thiết bị uinput chỉ khai báo mã bàn phím, bỏ toàn bộ dải nút chuột, joystick và
+gamepad. Driver đồng thời loại thiết bị có tên `H-OpenKey Virtual Keyboard` khỏi
+nhánh quan sát con trỏ, nên không tự đọc lại chính đầu ra của mình và libinput
+không phân loại nó thành thiết bị lai bàn phím–chuột.
 
 ## Phạm vi đã kiểm chứng
 
-**X11 là đường chạy tốt nhất**, đã kiểm chứng trên Zorin OS (GNOME/Xorg): chặn
-phím ở tầng kernel nên không dính giới hạn nào của giao thức input method.
+Mã driver và layout đã được kiểm thử tự động. Quy trình cài đặt nguồn XKB hiện
+nhắm tới GNOME Wayland; KDE, COSMIC và các desktop khác cần thêm bộ tích hợp cấu
+hình layout trước khi được xem là hỗ trợ hoàn chỉnh. Không có backend thay thế:
+nếu layout hoặc quyền thiết bị chưa đúng, ứng dụng báo lỗi và không bắt bàn phím.
 
-Trên **Pop!_OS (COSMIC)** gõ được nhưng vướng hai giới hạn của Wayland mà không
-sửa được từ phía bộ gõ — menu chuột phải của dock/panel không mở được
-([cosmic-comp#1763](https://github.com/pop-os/cosmic-comp/issues/1763)), và phím
-tắt đổi chế độ chỉ chạy khi con trỏ đang ở ô nhập văn bản. Chi tiết ở
-[README gốc repo](../../../README.md).
+## Biên dịch
 
-## Backend X11: chặn ở kernel, không phải XRecord
-
-XRecord **chỉ quan sát được phím, không chặn được**. Nghĩa là phím gốc đã tới ứng
-dụng trước khi bộ gõ kịp chạy, nên lúc nào cũng phải "gõ đè lên sau" — race
-condition là không tránh khỏi, và đó chính là bệnh mất chữ khi gõ nhanh. Cách duy
-nhất chặn được thật là xuống tầng kernel: `EVIOCGRAB` trên `/dev/input/event*`.
-Sau khi grab, **không ai khác** — kể cả X server — nhận được sự kiện của thiết bị
-đó nữa. Đổi lại phải thuộc nhóm `input`.
-
-Bốn thứ phải tự lo sau khi grab, mỗi thứ đều là một lỗi đã đo được:
-
-1. **Không được đổi keymap lúc đang gõ.** Ứng dụng tra chữ bằng bản sao keymap
-   của riêng nó, chỉ cập nhật khi xử lý tới `MappingNotify`. Gõ nhanh thì phím
-   tới **trước** thông báo đó, ứng dụng tra ra `NoSymbol` và **bỏ luôn ký tự**.
-   Vì vậy 237 ký tự được gán sẵn vào keycode trống **một lần lúc khởi động**
-   (67 cặp hoa/thường tiếng Việt + 8 dấu tổ hợp, ASCII thì dùng thẳng phím thật).
-2. **Không được bấm một phím đang được giữ.** Gõ nhanh là gõ gối đầu — phím trước
-   chưa nhả thì phím sau đã bấm. Lúc bơm lại chính phím đó để xuất chữ, X thấy nó
-   *đang bấm* nên **lọc bỏ lệnh bấm**, chỉ release lọt qua và ký tự biến mất. Đo
-   bằng `xev`: lần hỏng chỉ có `R kc=38`, không hề có `P kc=38`. Vì vậy
-   `tapKeycode()` tự nhả phím đó ra trước khi bơm.
-3. **Keysym Latin-1 phải đúng chuẩn.** Ký tự trong `U+0020..U+00FF` phải dùng
-   thẳng giá trị mã (`â` = `0x00E2`), không phải dạng Unicode `0x010000E2` —
-   nhiều ứng dụng không đổi ngược dạng phi chuẩn ra ký tự nên bỏ qua phím đó.
-4. **Phải tắt lặp phím của X** (`XAutoRepeatOff`). Bàn phím thật đã bị chặn ở
-   kernel nên mọi lần lặp phải đi ra từ evdev; để X tự lặp thêm thì màn hình có
-   ký tự mà engine không biết, sổ sách đếm xoá lệch ngay.
-
-Ngoài ra keycode đã mượn phải **trả về `NoSymbol` lúc thoát**, nếu không mỗi lần
-chạy lại mất dần cho tới khi cạn sạch; và `/dev/input` phải **quét lại định kỳ**
-vì bàn phím không dây hay ngắt rồi hiện lại dưới node khác.
-
-## Đầu ra trên Wayland: vì sao lại rắc rối đến vậy
-
-Trên Windows và macOS, xoá và chèn là **cùng một loại vật thể**: `SendInput` với
-`KEYEVENTF_UNICODE`, hoặc `CGEventKeyboardSetUnicodeString` — cùng một hàng đợi
-nằm dưới ứng dụng, thứ tự do hàng đợi bảo đảm, ứng dụng không phân biệt được với
-gõ tay thật. Không có gì để trộn.
-
-Wayland cố tình không có cả hai thứ đó. Muốn nuốt phím thì **buộc phải làm input
-method**; mà làm input method thì ứng dụng chuyển sang chờ chữ ở kênh text-input.
-Thành ra chữ đi ra bằng **hai đường** và không có gì bảo đảm thứ tự giữa chúng:
-
-| Đường | Dùng cho |
-| --- | --- |
-| Bàn phím ảo | BackSpace, chuyển tiếp phím, gõ chữ bằng keymap ghép sẵn |
-| text-input | `commit_string` |
-
-Các bộ soạn thảo giàu định dạng trên web (ô chat Facebook dùng Lexical, và
-Draft.js/ProseMirror) tự dựng lại nội dung theo mô hình riêng, nên khi hai đường
-đến lệch nhau thì một trong hai bị nuốt mất — không đoán trước được bên nào:
-
-```
-mất phần xoá:   "ting vie" + (xoá 1, chèn "ê")  →  "ting vieê"
-mất phần chèn:  "tie"      + (xoá 1, chèn "ê")  →  "ti"
-```
-
-Cách xử lý: **một hàng đợi FIFO duy nhất** cho mọi thao tác. Trong cùng một đường
-thì chạy liền không chờ; chỉ khi **đổi đường** mới dừng lại chờ ứng dụng báo đã
-xử lý xong (`surrounding_text`), có hạn chót 60 ms để không bao giờ kẹt.
-
-Đường đi chọn theo ứng dụng, mỗi nhánh dựa trên đo đạc thực tế:
-
-| Ứng dụng | Xoá | Chèn |
-| --- | --- | --- |
-| Không có phiên text-input (XWayland) | BackSpace ảo | keymap ghép sẵn |
-| Firefox | BackSpace ảo | keymap ghép sẵn |
-| Chrome / Chromium / Edge… | BackSpace ảo | `commit_string`, kể cả ký tự thường |
-| Còn lại (VS Code, terminal…) | BackSpace ảo | `commit_string` |
-
-Với họ Chromium, ký tự thường đi đường text-input **không phải vì đường phím
-hỏng** — nó chạy tốt — mà để khỏi phải đổi đường: gõ một chữ có dấu vì thế chỉ
-tốn một lần chờ thay vì hai.
-
-### Ba hướng đã thử và đã chết
-
-Ghi lại để khỏi ai đi lại:
-
-1. **Chọn cơ chế theo app-id đơn thuần** — không được. Trong *cùng* một app-id
-   `google-chrome`, ô nhập thường xử lý `delete_surrounding_text` đúng, còn ô chat
-   Facebook bỏ qua nó. Không có tín hiệu nào ở tầng giao thức tách được hai ô nằm
-   trong cùng một trình duyệt.
-2. **Dùng `delete_surrounding_text` cho mọi ứng dụng có surrounding text** — hỏng
-   VS Code và terminal: chúng **báo cáo** surrounding text nhưng **bỏ qua** yêu
-   cầu xoá, vì văn bản thuộc về bộ soạn dòng của shell / xterm.js chứ không phải
-   ô nhập của toolkit. Chữ dồn lại thành rác (`"sửa"` ra `"suaửa"`).
-3. **Đưa tất cả qua bàn phím ảo** — hỏng Chrome và terminal: chúng không nhận các
-   keycode tự chế trong keymap ghép. Firefox thì nhận, nên nhánh Firefox giữ lại
-   cách này.
-
-Ngoài ra `surrounding_text` **không đáng tin ở mọi nơi**: VS Code báo
-`" đây à õ ên"` trong khi màn hình hiện đúng `"đây là gõ trên"`. Vì vậy nó chỉ
-được dùng làm tín hiệu báo-xong cho họ Chromium.
-
-Keymap ghép sẵn có trần cứng: khoảng mã phím trống chỉ còn 249 chỗ (trên 767 là
-vượt `KEY_MAX` của evdev), danh sách hiện dùng 237. Muốn thêm — ví dụ khoảng
-`U+00A0..U+00FF` cho bảng mã TCVN3/VNI — thì phải giải phóng 95 chỗ của ASCII
-trước, bằng cách trả ký tự ASCII về phím thật thay vì cấp phím riêng.
-
-## Build
-
-Không cần `sudo`, không cần cài thêm gì trên một máy đã có môi trường phát triển
-thông thường.
+Không cần quyền `sudo` nếu hệ thống đã có đầy đủ môi trường phát triển và các gói
+phụ thuộc.
 
 ```sh
 cmake -S Sources/OpenKey/linux -B build
@@ -141,37 +92,39 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Phụ thuộc: `qt6-base-dev`, `libwayland-dev`, `wayland-protocols`,
-`libxkbcommon-dev`, `libx11-dev`, `libxtst-dev`, `cmake`, `g++`.
+Phụ thuộc: `qt6-base-dev`, `libxkbcommon-dev`, `pkg-config`, `cmake`, `g++`.
 
-## Chạy
+## Chạy ứng dụng
 
-Trên **Wayland**, chỉ **một** bộ gõ được giữ input method của phiên. Phải tắt hẳn
-bộ gõ khác trước (trên X11 thì không cần, vì phím bị chặn từ tầng kernel):
+Chỉ chạy một bộ gõ độc lập. Dừng fcitx/fcitx5 trước khi bật H-OpenKey:
 
 ```sh
-systemctl --user stop app-org.fcitx.Fcitx5@autostart.service   # hoặc ibus exit
+systemctl --user stop app-org.fcitx.Fcitx5@autostart.service
 ./build/ui/h-openkey
 ```
 
-Trên **X11**, backend cần đọc được `/dev/input/event*` để `EVIOCGRAB`. Thiếu
-quyền thì nó báo `khong co quyen doc /dev/input/event*` rồi dừng:
+Nếu phiên hiện tại vẫn có `GTK_IM_MODULE=fcitx`, `QT_IM_MODULE=fcitx` hoặc
+`XMODIFIERS=@im=fcitx`, hãy đăng xuất rồi đăng nhập lại.
+
+Backend trực tiếp cần đọc `/dev/input/event*` và ghi `/dev/uinput`. Trình cài đặt
+tự cài quy tắc udev; nếu tự biên dịch, tài khoản cần thuộc nhóm `input`:
 
 ```sh
 sudo usermod -aG input $USER   # rồi ĐĂNG XUẤT và đăng nhập lại
 ```
 
-Script cài tự làm bước này; build tay thì phải tự chạy.
+Quyền `input` có thể đọc toàn bộ phím bấm. Không cấp quyền cho tài khoản hoặc
+chương trình không đáng tin cậy.
 
-Lưu ý về cosmic-comp: khi đã có bộ gõ khác giữ chỗ, nó **không** gửi sự kiện
-`unavailable` mà chỉ lặng lẽ không bao giờ kích hoạt client thứ hai. Triệu chứng
-là OpenKey chạy bình thường nhưng không gõ ra chữ nào. Vì vậy OpenKey tự dò các
-tiến trình `fcitx5`, `fcitx`, `ibus-daemon` lúc khởi động và cảnh báo.
+H-OpenKey phát hiện tiến trình và cấu hình tự khởi động của fcitx5, fcitx cùng
+một số bộ gõ phổ biến khác. Nếu người dùng đồng ý, ứng dụng sẽ tắt bộ gõ gây
+xung đột; nếu từ chối, H-OpenKey sẽ tắt để tránh hai bộ cùng sửa luồng phím.
 
-Nhật ký chẩn đoán bật được hai cách: `OPENKEY_DEBUG=1` lúc chạy từ terminal (in
-ra stderr), hoặc nút **Bắt đầu ghi nhật ký** trong bảng điều khiển → tab *Hệ
-thống* (ghi ra `~/.local/share/h-openkey/debug.log`, có mốc thời gian tới mili
-giây). Nội dung gồm từng phím nhận được, từng lần xoá/chèn, keycode đã bơm, và
+Có thể bật nhật ký chẩn đoán theo hai cách: đặt `OPENKEY_DEBUG=1` khi chạy từ
+terminal (nội dung được ghi ra stderr), hoặc chọn **Bắt đầu ghi nhật ký** trong
+bảng điều khiển → tab *Hệ thống* (ghi ra
+`~/.local/share/h-openkey/debug.log`, có mốc thời gian tới mili
+giây). Nội dung gồm từng phím nhận được, từng lần xoá/chèn, keycode đã phát, và
 các lần đổi cửa sổ focus.
 
 ## Cài đặt bằng một lệnh
@@ -180,12 +133,17 @@ các lần đổi cửa sổ focus.
 curl -fsSL https://raw.githubusercontent.com/hieu8123/OpenKey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 ```
 
-Script tự cài phụ thuộc theo distro (apt, dnf, pacman, zypper), tải mã nguồn từ
-bản phát hành mới nhất, build, **chạy kiểm thử trước khi cài**, dựng systemd user
-service, và hỏi trước khi tắt bộ gõ cũ. Gỡ ra bằng `bash install.sh --uninstall`.
+Trình cài đặt tự động cài các gói phụ thuộc theo bản phân phối (`apt`, `dnf`,
+`pacman`, `zypper`), tải mã nguồn từ bản phát hành mới nhất, biên dịch, **chạy
+kiểm thử trước khi cài đặt**, tạo dịch vụ systemd cho người dùng và yêu cầu xác
+nhận trước khi tắt bộ gõ cũ. Trên GNOME Wayland, trình cài đặt cài quy tắc udev,
+layout `custom`, lưu nguồn nhập cũ để khôi phục và chọn backend `driver`.
+Layout dùng `symbols/custom` trong XKB root hệ thống; tên `custom` vốn đã có
+trong registry chuẩn nên không cần sửa rules của distro. Gỡ cài đặt bằng
+`bash install.sh --uninstall`.
 
-Vì sao build tại máy thay vì tải binary sẵn: bản binary phụ thuộc phiên bản Qt6
-của máy build, nên hay vỡ khi đem sang distro khác.
+Việc biên dịch tại máy giúp tệp thực thi liên kết với đúng phiên bản Qt6 của hệ
+thống, tránh vấn đề tương thích giữa các bản phân phối.
 
 ## Cài đặt thủ công
 
@@ -193,6 +151,23 @@ của máy build, nên hay vỡ khi đem sang distro khác.
 cmake -S Sources/OpenKey/linux -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local
 cmake --build build
 cmake --install build
+./build/ui/h-openkey --configure-driver
+```
+
+Lệnh cuối cài layout vào `~/.config/xkb` và chọn backend driver, nhưng không cấp
+quyền thiết bị. Có thể chép quy tắc đi kèm rồi đăng xuất, đăng nhập lại:
+
+```sh
+sudo install -Dm0644 Sources/OpenKey/linux/packaging/70-h-openkey.rules \
+  /etc/udev/rules.d/70-h-openkey.rules
+sudo usermod -aG input "$USER"
+sudo modprobe uinput
+sudo udevadm control --reload-rules
+sudo install -m0644 ~/.config/xkb/symbols/hopenkey \
+  /usr/share/X11/xkb/symbols/custom
+gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'custom')]"
+gsettings set org.gnome.desktop.input-sources current 'uint32 0'
+setxkbmap -layout custom  # đồng bộ các ứng dụng XWayland trong phiên hiện tại
 ```
 
 Chạy cùng phiên đăng nhập. Unit systemd được cài vào `$PREFIX/lib/systemd/user`,
@@ -203,10 +178,13 @@ sang thư mục systemd đọc được:
 mkdir -p ~/.config/systemd/user
 ln -sf ~/.local/lib/systemd/user/h-openkey.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now h-openkey.service
+systemctl --user enable h-openkey.service
 ```
 
-Nhớ tắt hẳn bộ gõ cũ, nếu không OpenKey sẽ không bao giờ được kích hoạt:
+Sau đó bật service; nếu ứng dụng Wayland đang mở vẫn giữ keymap cũ, đăng xuất rồi
+đăng nhập lại một lần.
+
+Cần dừng và vô hiệu hoá autostart của bộ gõ cũ trước khi kích hoạt OpenKey:
 
 ```sh
 systemctl --user stop app-org.fcitx.Fcitx5@autostart.service
@@ -215,20 +193,19 @@ mv ~/.config/autostart/org.fcitx.Fcitx5.desktop{,.disabled}
 
 ## Cấu hình
 
-`~/.config/openkey/config.json` — các tuỳ chọn dạng số của engine, kèm khoá
-`backend` nhận `auto`, `wayland` hoặc `x11`. Bảng gõ tắt và bảng nhớ mã theo ứng
-dụng nằm ở `macro.dat` và `smartswitch.dat` cùng thư mục, dùng đúng định dạng nhị
-phân sẵn có của engine.
+`~/.config/openkey/config.json` chứa các tuỳ chọn dạng số của engine. Khoá
+`backend` luôn được ghi là `driver`; giá trị từ bản cũ cũng được tự nâng cấp sang
+driver. Bảng gõ tắt và bảng nhớ mã theo ứng dụng nằm ở `macro.dat` và
+`smartswitch.dat` cùng thư mục, dùng đúng định dạng nhị phân sẵn có của engine.
 
 ## Cấu trúc
 
 ```
-core/       thuần logic, không phụ thuộc Wayland/X11/Qt — kiểm thử bằng FakeBackend
-backends/   evdev/   chặn phím ở kernel (EVIOCGRAB), dùng cho backend X11
-            wayland/ input-method-v2 + virtual-keyboard
-            x11/     evdev + XTEST
+core/       thuần logic, không phụ thuộc desktop hay Qt — kiểm thử bằng FakeBackend
+backends/   driver/  evdev + uinput + layout XKB H-OpenKey
+            evdev/   chặn phím vật lý ở kernel (EVIOCGRAB)
 ui/         Qt6: biểu tượng khay, bảng điều khiển
-tests/      bơm chuỗi phím, đối chiếu văn bản ra — không cần compositor
+tests/      kiểm tra engine và đủ 142 ánh xạ Unicode qua libxkbcommon
 ```
 
 Thiết kế đầy đủ: `docs/superpowers/specs/2026-07-28-openkey-linux-design.md`.
