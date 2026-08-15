@@ -1,6 +1,6 @@
 [Unit]
 Description=H-OpenKey — bộ gõ tiếng Việt
-Documentation=https://github.com/tuyenvm/OpenKey
+Documentation=https://github.com/hieu8123/h-openkey
 # Chay trong phien do hoa de compositor/X server nhan ban phim uinput.
 PartOf=graphical-session.target
 After=graphical-session.target
@@ -9,7 +9,12 @@ After=graphical-session.target
 Type=simple
 ExecStart=@OPENKEY_BIN@
 Restart=on-failure
-RestartSec=2
+RestartSec=1
+NotifyAccess=main
+WatchdogSec=3s
+# SIGSTOP dong bang ca watchdog noi bo; SIGKILL tu systemd buoc kernel dong fd
+# va nha EVIOCGRAB ngay ca khi process khong the tu abort.
+WatchdogSignal=SIGKILL
 
 [Install]
 WantedBy=graphical-session.target

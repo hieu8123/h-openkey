@@ -78,6 +78,11 @@ void telexTests() {
     check("vieejt", typeKeys("vieejt", vTelex, 0), "việt");
     check("tieengs", typeKeys("tieengs", vTelex, 0), "tiếng");
     check("ddaay", typeKeys("ddaay", vTelex, 0), "đây");
+    // Hoi quy cho thanh dia chi Chromium: cung cum nguyen am nhung thu tu
+    // phim khac nhau phai deu duoc core tinh dung, truoc khi xet tang uinput.
+    check("looi", typeKeys("looi", vTelex, 0), "lôi");
+    check("loio", typeKeys("loio", vTelex, 0), "lôi");
+    check("looix", typeKeys("looix", vTelex, 0), "lỗi");
     // Mac dinh la kieu dat dau cu, nen "hoaf" phai ra "hòa" chu khong phai "hoà".
     check("hoaf (kieu cu)", typeKeys("hoaf", vTelex, 0), "hòa");
     check("nhuwng", typeKeys("nhuwng", vTelex, 0), "nhưng");
@@ -173,6 +178,57 @@ void mouseContextBreakTest() {
     check("click roi 'lee'", backend.buffer, "lê");
 }
 
+void chromiumAutocompleteTest() {
+    std::printf("Sua selection autocomplete truoc khi Backspace:\n");
+    openkey::resetAppStateToDefault();
+
+    openkey::FakeBackend backend;
+    openkey::OpenKeyCore core(backend);
+    core.attach();
+    for (char c : std::string("looi")) {
+        openkey::KeyEvent ev;
+        ev.pressed = true;
+        ev.keycode = keycodeForChar(c);
+        backend.feed(ev);
+    }
+    check("looi + autocomplete", backend.buffer, "lôi");
+    if (backend.autocompleteFlushCalls == 0) {
+        std::printf("  FAIL core khong yeu cau huy autocomplete\n");
+        failures++;
+    }
+}
+
+void languageActivationTest() {
+    std::printf("Chi bat tieng Viet sau khi layout san sang:\n");
+    openkey::resetAppStateToDefault();
+    vLanguage = 0;
+
+    openkey::FakeBackend backend;
+    openkey::OpenKeyCore core(backend);
+    core.attach();
+    int requests = 0;
+    core.onVietnameseActivationRequested = [&requests] { requests++; };
+
+    core.toggleLanguage();
+    check("cho layout", std::to_string(vLanguage), "0");
+    if (requests != 1) {
+        std::printf("  FAIL phai yeu cau UI chuyen layout dung mot lan\n");
+        failures++;
+    }
+    core.toggleLanguage();
+    if (requests != 1) {
+        std::printf("  FAIL khong duoc lap yeu cau khi dang cho layout\n");
+        failures++;
+    }
+    core.completeVietnameseActivation(true);
+    check("layout da san sang", std::to_string(vLanguage), "1");
+
+    core.toggleLanguage();
+    core.toggleLanguage();
+    core.completeVietnameseActivation(false);
+    check("layout loi giu tieng Anh", std::to_string(vLanguage), "0");
+}
+
 } // namespace
 
 int main() {
@@ -182,6 +238,8 @@ int main() {
     multiWordTest();
     modifierKeyTest();
     mouseContextBreakTest();
+    chromiumAutocompleteTest();
+    languageActivationTest();
 
     if (failures == 0) {
         std::printf("\nTat ca deu dat.\n");

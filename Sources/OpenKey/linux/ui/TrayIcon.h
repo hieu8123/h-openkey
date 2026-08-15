@@ -10,6 +10,7 @@
 #define OPENKEY_LINUX_TRAYICON_H
 
 #include <QObject>
+#include <QString>
 #include <QSystemTrayIcon>
 
 #include <functional>
@@ -31,6 +32,8 @@ public:
 
     void show();
     void refresh();
+    void showWarning(const QString& message);
+    void setRuntimeWarning(const QString& message);
 
 signals:
     void controlPanelRequested();
@@ -46,6 +49,7 @@ private:
     QAction* _languageAction = nullptr;
     QActionGroup* _inputTypeGroup = nullptr;
     QActionGroup* _codeTableGroup = nullptr;
+    QString _runtimeWarning;
 };
 
 } // namespace openkey

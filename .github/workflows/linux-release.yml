@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cài phụ thuộc
         run: |
@@ -48,14 +48,16 @@ jobs:
           DESTDIR="$PWD/dist/bin-root" cmake --install build
           tar -C dist/bin-root -czf "${name}-ubuntu24.04-x86_64.tar.gz" .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: openkey-linux
           path: "*.tar.gz"
 
       - name: Gắn vào bản phát hành
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
           files: "*.tar.gz"

@@ -28,6 +28,8 @@ Bản Linux mang tên `h-openkey` để phân biệt với dự án gốc.
   render trước khi xử lý phím kế tiếp.
 - Luồng bàn phím riêng ngủ trong `epoll_wait`; Qt, biểu tượng khay và DBus không
   nằm trên đường gõ. Hotplug dùng `inotify`, không quét thiết bị định kỳ.
+- Khi logind/GNOME báo khoá phiên, driver cưỡng bức pass-through và reset ngữ
+  cảnh, nên Telex/VNI không sửa mật khẩu trên màn hình khoá.
 - Chỉ có một backend `evdev → OpenKeyCore → uinput`, không tự rơi sang một cơ
   chế khác có hành vi hoặc độ trễ khác.
 
@@ -109,21 +111,39 @@ khác, driver dùng chung nhưng bước tích hợp layout vẫn cần cấu h�
 > [!IMPORTANT]
 > Driver cần quyền đọc sự kiện bàn phím và ghi `/dev/uinput`. Quyền này có thể
 > quan sát toàn bộ phím bấm, vì vậy chỉ nên cài từ mã nguồn đáng tin cậy. Trình
-> cài đặt thêm quy tắc udev giới hạn quyền cho người dùng đang hoạt động tại
-> seat, đồng thời dùng nhóm `input` làm phương án dự phòng.
+> cài đặt thêm quy tắc udev dùng ACL `uaccess`, chỉ cấp quyền cho người dùng đang
+> hoạt động tại seat; không thêm tài khoản vào nhóm `input`.
 
-Trên GNOME, trình cài đặt lưu danh sách nguồn nhập hiện tại, sau đó chỉ bật layout
-`xkb:custom` có sẵn trong registry hệ thống. H-OpenKey cài symbols của mình cho
-layout này; phím thường vẫn là bàn phím US, còn bàn phím ảo có thêm các level
-Unicode. Khi gỡ cài đặt, danh sách nguồn nhập cũ được khôi phục. Nếu máy đã có
-`symbols/custom` không phải do H-OpenKey tạo, trình cài đặt dừng và không ghi đè.
+Trên GNOME, trình cài đặt thêm `xkb:custom` vào danh sách nguồn nhập nhưng giữ
+nguyên các nguồn IBus/Fcitx, tiếng Nhật, tiếng Hàn và các bố cục đã có. H-OpenKey
+cài symbols của mình cho layout này; phím thường vẫn là bàn phím US, còn bàn phím
+ảo có thêm các level Unicode. Nếu máy đã có `symbols/custom` không phải do
+H-OpenKey tạo, trình cài đặt dừng và không ghi đè.
+
+Trong phần cài đặt bàn phím, nguồn này được hiển thị là **H-OpenKey Layout** thay
+cho tên kỹ thuật “A user-defined custom Layout”. ID bên trong vẫn là
+`xkb:custom` để Mutter nhận layout ổn định; mã ngắn trên thanh hệ thống là
+**HOK**. Trình gỡ cài đặt hoàn nguyên nhãn mặc định nếu metadata đó vẫn do
+H-OpenKey quản lý.
+
+`symbols/custom` và metadata tên hiển thị nằm trong XKB root của hệ thống nên một
+lần nâng cấp gói `xkeyboard-config` có thể thay thế chúng. Driver kiểm tra chữ ký
+symbols khi khởi động và từ chối grab nếu file không còn đúng; nếu tên lại hiện
+thành “A user-defined custom Layout” hoặc driver báo sai layout, hãy chạy lại
+trình cài đặt.
 
 Không có cơ chế tự chuyển backend. Nếu driver chưa sẵn sàng, H-OpenKey giữ bảng
 điều khiển và khay hệ thống để báo đúng nguyên nhân nhưng không bắt bàn phím.
 
 Driver hiện không đọc app-id của cửa sổ đang nhận tiêu điểm, nên Smart Switch Key
-theo từng ứng dụng chưa hoạt động trên đường này. Việc gõ và sửa dấu không phụ
-thuộc app-id.
+theo từng ứng dụng chưa hoạt động trên đường này. Các công tắc nhớ ngôn ngữ/bảng
+mã theo ứng dụng được ẩn khỏi bảng điều khiển thay vì cho phép bật mà không có
+tác dụng. Việc gõ và sửa dấu không phụ thuộc app-id.
+
+Nếu một bàn phím vẫn báo có phím đang giữ lúc service khởi động, driver chờ đúng
+sự kiện nhả rồi mới grab thiết bị đó. Sau ba giây vẫn chưa nhận được thiết bị,
+biểu tượng khay hiện cảnh báo và ghi lý do trong tooltip; cơ chế này theo sự kiện,
+không quét hoặc polling `/dev/input`.
 
 ## 🐞 Báo lỗi gõ
 
@@ -131,18 +151,37 @@ Lỗi gõ hầu hết liên quan đến race condition hoặc thứ tự sự ki
 trong một số môi trường cụ thể. Bảng điều khiển cung cấp công cụ ghi nhật ký để
 thu thập dữ liệu chẩn đoán:
 
+> [!CAUTION]
+> **Tuyệt đối không tùy tiện bật nhật ký chẩn đoán.** Khi được bật, H-OpenKey
+> ghi mã phím và văn bản do bộ gõ tạo ra vào một tệp trên máy. Nếu bạn nhập mật
+> khẩu, mã OTP, khóa API, thông tin thanh toán hoặc dữ liệu riêng tư trong thời
+> gian đó, nội dung nhạy cảm có thể xuất hiện dưới dạng văn bản thuần trong tệp
+> nhật ký. Chỉ bật log ngay trước khi tái hiện lỗi, tắt ngay sau khi tái hiện
+> xong, và luôn tự kiểm tra toàn bộ nội dung trước khi gửi cho bất kỳ ai.
+
 1. Mở bảng điều khiển → tab **Hệ thống** → mục **Chẩn đoán lỗi gõ**
 2. Bấm **Bắt đầu ghi nhật ký**
 3. Gõ lại cho đúng lỗi tái hiện
 4. Bấm **Dừng ghi nhật ký**, rồi **Mở thư mục chứa nhật ký**
 5. Đính kèm tệp `~/.local/share/h-openkey/debug.log` trong báo cáo lỗi
 
-Tệp nhật ký chỉ chứa mã phím và văn bản do bộ gõ tạo ra. Dữ liệu không được tự
-động truyền ra ngoài; người dùng có thể kiểm tra nội dung trước khi gửi.
+Tệp nhật ký không được tự động truyền ra ngoài. Việc bảo quản, kiểm tra và gửi
+tệp hoàn toàn do người dùng chủ động thực hiện. Chế độ dòng lệnh
+`OPENKEY_DEBUG=1` ghi ra stderr; nếu dùng trong service, nội dung sẽ vào
+`journald`, không chịu quyền `0600` của file trên và có thể được lưu lâu hơn.
+Nếu ring buffer RAM đầy, luồng gõ bỏ bản ghi thay vì chờ I/O; flusher sẽ chèn dòng
+`[dropped N]` để người đọc biết nhật ký đang thiếu `N` bản ghi.
 
 ## 📦 Cài đặt
 
 Bản ổn định hiện tại: [H-OpenKey Linux 1.3.0](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.0).
+
+> [!WARNING]
+> Trình cài đặt tự động hiện chỉ dành cho **GNOME có `gsettings`** và layout
+> `xkb:custom` dựa trên **US QWERTY**. Nó sẽ dừng trước khi thay đổi hệ thống nếu
+> thiếu GNOME, đồng thời hỏi xác nhận trước lần đầu thêm **H-OpenKey Layout**.
+> AZERTY, QWERTZ, Dvorak và Colemak chưa được hỗ trợ đúng ở tầng evdev; không
+> nên tiếp tục cài trên các layout này.
 
 Cài đặt bằng một lệnh, không cần sao chép kho mã nguồn:
 
@@ -150,9 +189,11 @@ Cài đặt bằng một lệnh, không cần sao chép kho mã nguồn:
 curl -fsSL https://raw.githubusercontent.com/hieu8123/h-openkey/master/Sources/OpenKey/linux/packaging/install.sh | bash
 ```
 
-Trình cài đặt tự động cài các gói phụ thuộc thông qua `apt`, `dnf`, `pacman` hoặc
-`zypper`, biên dịch ứng dụng, cài vào `~/.local/bin`, tạo mục trong trình đơn và
-cấu hình khởi động cùng phiên đăng nhập. Trên GNOME Wayland, trình cài đặt còn
+Trình cài đặt chỉ tải gói `*-src.tar.gz` gắn với bản phát hành mới nhất; nếu
+release thiếu gói này, quá trình cài dừng và không tự lấy mã từ nhánh `master`.
+Nó cài phụ thuộc qua `apt`, `dnf`, `pacman` hoặc `zypper`, biên dịch ứng dụng,
+cài vào `~/.local/bin`, tạo mục trong trình đơn và cấu hình khởi động cùng phiên
+đăng nhập. Trên GNOME Wayland, trình cài đặt còn
 cài quy tắc udev, layout `xkb:custom` và chọn backend driver. Bước cấp quyền
 cần `sudo`; symbols được cài vào XKB root hệ thống vì Mutter 46 không dùng bản
 trong thư mục người dùng khi tạo keymap cho seat. Sau lần cài đặt hoặc cập nhật
@@ -183,22 +224,24 @@ Phụ thuộc: `cmake`, `g++`, `qt6-base-dev`, `pkg-config`, `libxkbcommon-dev`.
 
 ## 🚀 Sử dụng
 
-> [!CAUTION]
-> Không chạy đồng thời H-OpenKey với một bộ gõ độc lập khác đang sửa cùng luồng
-> phím. Ứng dụng phát hiện fcitx/fcitx5 và yêu cầu xác nhận trước khi vô hiệu hoá.
-
-```sh
-systemctl --user stop app-org.fcitx.Fcitx5@autostart.service
-h-openkey
-```
+H-OpenKey có thể chạy song song với IBus, Fcitx và các engine tiếng Nhật/Hàn;
+ứng dụng không dừng tiến trình, không tắt autostart và không sửa các biến môi
+trường input method của chúng. Trước khi dùng một engine khác, hãy chuyển
+H-OpenKey sang chế độ **tiếng Anh** để driver chỉ chuyển tiếp phím nguyên bản.
+Khi quay lại tiếng Việt trên GNOME, chỉ cần bật lại chế độ tiếng Việt: H-OpenKey
+tự chọn **H-OpenKey Layout** (`xkb:custom`) trước rồi mới bật engine. Nếu không
+chuyển được nguồn, ứng dụng giữ chế độ tiếng Anh và báo ở khay thay vì phát
+carrier bằng keymap sai rồi nuốt chữ. Việc gọi `gsettings` chỉ xảy ra lúc chuyển
+chế độ, không nằm trên đường xử lý từng phím.
 
 Bộ gõ nằm ở khay hệ thống. Biểu tượng cho biết đang ở chế độ tiếng Việt hay tiếng
 Anh; bấm vào để mở bảng điều khiển. Mặc định chuyển chế độ bằng `Ctrl + Shift`,
 đổi được trong bảng điều khiển.
 
-Trên GNOME, nguồn nhập phải là layout **Custom** do H-OpenKey cài
-(`xkb:custom`). Bảng điều khiển chỉ hiển thị cơ chế **Driver trực tiếp** vì
-không còn backend khác.
+Nguồn nhập **H-OpenKey Layout** chỉ bắt buộc trong lúc H-OpenKey phát tiếng Việt;
+một nguồn IBus/Fcitx khác vẫn có thể là nguồn hiện tại khi H-OpenKey đang ở chế
+độ tiếng Anh. Bảng điều khiển chỉ hiển thị cơ chế **Driver trực tiếp** vì không
+còn backend khác.
 
 > [!NOTE]
 > Driver không đặt khoảng chờ khi sửa dấu. Luồng `epoll_wait` được kernel đánh
@@ -210,15 +253,14 @@ không còn backend khác.
 | | |
 | --- | --- |
 | 🚀 **Driver trực tiếp** | evdev → OpenKeyCore → uinput; không IBus, preedit hoặc backend dự phòng |
-| ⚡ **Đường gõ sự kiện** | Luồng epoll riêng, hotplug bằng inotify, không polling và không timer |
+| ⚡ **Đường gõ sự kiện** | Luồng epoll riêng, hotplug bằng inotify, không polling đường bàn phím |
 | ⌨️ **Kiểu gõ** | Telex, VNI, Simple Telex 1, Simple Telex 2 |
 | 🔤 **Bảng mã** | Unicode dựng sẵn, TCVN3 (ABC), VNI Windows, Unicode tổ hợp |
-| 🧠 **Smart Switch Key** | Engine vẫn hỗ trợ; nhận diện app-id đang chờ tích hợp cho driver trực tiếp |
 | ✍️ **Gõ tắt** | Bảng gõ tắt riêng, dùng được cả khi đang ở chế độ tiếng Anh |
 | 🔄 **Chuyển mã** | Công cụ chuyển văn bản giữa các bảng mã |
 | 🎯 **Kiểm tra chính tả** | Gõ sai thì trả lại nguyên các phím đã bấm |
 | 🔠 **Tự viết hoa** | Viết hoa đầu câu tự động |
-| 🚀 **Tự khởi động** | Bật hoặc tắt trong tab Hệ thống; xử lý xung đột fcitx/fcitx5 sau khi người dùng xác nhận |
+| 🚀 **Tự khởi động** | Bật hoặc tắt trong tab Hệ thống; không vô hiệu hoá IBus, Fcitx hay engine khác |
 | ⚡ **Gõ tắt phụ âm** | `f→ph`, `j→gi`, `w→qu`, `g→ng`, `h→nh`, `k→ch` |
 | 🎛️ **Đặt dấu** | Chọn kiểu `oà, uý` hoặc `òa, úy`; cho phép đặt dấu tự do |
 

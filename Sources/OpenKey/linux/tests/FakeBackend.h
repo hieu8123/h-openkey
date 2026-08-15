@@ -35,6 +35,12 @@ public:
 
     void sendResult(const DeleteRequest& del, const std::u32string& out) override {
         deleteCalls++;
+        if (del.clearAutocomplete) {
+            autocompleteFlushCalls++;
+            // Gia lap ky tu dem U+202F duoc chen roi xoa ngay truoc van ban cu.
+            buffer += "\xE2\x80\xAF";
+            buffer.erase(buffer.size() - 3);
+        }
         // Bo dem cua ung dung tinh theo byte, dung nhu delete_surrounding_text.
         const size_t n = del.utf8Bytes > buffer.size() ? buffer.size() : del.utf8Bytes;
         buffer.erase(buffer.size() - n);
@@ -63,6 +69,7 @@ public:
 
     std::string buffer;
     int deleteCalls = 0;
+    int autocompleteFlushCalls = 0;
     int forwardCalls = 0;
 
 private:

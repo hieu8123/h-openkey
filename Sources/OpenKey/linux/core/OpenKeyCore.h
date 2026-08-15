@@ -9,7 +9,6 @@
 #ifndef OPENKEY_LINUX_OPENKEYCORE_H
 #define OPENKEY_LINUX_OPENKEYCORE_H
 
-#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -39,6 +38,10 @@ public:
 
     void toggleLanguage();
 
+    // Tren GNOME, khi dang dung Mozc/IBus thi UI phai chuyen source ve
+    // xkb:custom truoc. Core chi bat engine sau khi UI xac nhan thanh cong.
+    void completeVietnameseActivation(bool activated);
+
     // Tam ngung khi chinh cua so OpenKey dang nhan focus, tranh vong lap phan hoi.
     void setSuspended(bool suspended);
 
@@ -49,6 +52,10 @@ public:
     // Bao cho giao dien biet trang thai vua doi (vi du Smart Switch Key vua tu
     // chuyen ngon ngu), de bieu tuong khay cap nhat theo.
     std::function<void()> onStateChanged;
+
+    // Neu duoc gan, yeu cau bat tieng Viet se di qua callback nay thay vi doi
+    // vLanguage ngay. Callback co the dua viec gsettings sang luong UI.
+    std::function<void()> onVietnameseActivationRequested;
 
     // Xoa ky uc ve nhung gi da nam trong tu hien tai. Goi khi khong con chac
     // trang thai cua o nhap con khop voi ky uc cua minh.
@@ -87,14 +94,9 @@ private:
     std::string _focusedAppId;
     bool _suspended = false;
     bool _switchKeyArmed = false;
+    bool _vietnameseActivationPending = false;
     std::recursive_mutex _mutex;
 
-    // Neu khoang lang giua hai phim qua lau, rat co the nguoi dung da chuyen
-    // sang mot o nhap khac roi quay lai ma khong co su kien doi focus nao bao
-    // (vi du doi tab trong cung mot cua so terminal/TUI) — bo dem tu dang go
-    // luc do khong con dung voi thuc te tren man hinh nua.
-    std::chrono::steady_clock::time_point _lastKeyTime;
-    bool _hasLastKeyTime = false;
 };
 
 } // namespace openkey

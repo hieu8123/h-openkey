@@ -25,6 +25,67 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; return 0; }
 trap cleanup EXIT
 
+# xkeyboard-config dang ky san ID "custom", nhung ten mac dinh cua no la
+# "A user-defined custom Layout". GNOME doc ten tu rules XML thay vi doc
+# name[Group1] trong symbols, nen doi dung metadata cua entry nay de giao dien
+# hien thi ro "H-OpenKey Layout". Moi phep thay the deu doi chieu so lan xuat
+# hien; gap rules khac du kien thi bo qua thay vi sua nham entry cua distro.
+update_xkb_layout_label() {
+    local xkb_root="$1"
+    local action="$2"
+    local from_short from_description to_short to_description
+    case "$action" in
+        install)
+            from_short="custom"
+            from_description="A user-defined custom Layout"
+            to_short="HOK"
+            to_description="H-OpenKey Layout"
+            ;;
+        uninstall)
+            from_short="HOK"
+            from_description="H-OpenKey Layout"
+            to_short="custom"
+            to_description="A user-defined custom Layout"
+            ;;
+        *) die "Thao tác nhãn XKB không hợp lệ: $action" ;;
+    esac
+
+    local file short_count description_count
+    for file in "$xkb_root/rules/base.xml" "$xkb_root/rules/evdev.xml"; do
+        [ -f "$file" ] || continue
+        if grep -Fq "<shortDescription>$to_short</shortDescription>" "$file" && \
+           grep -Fq "<description>$to_description</description>" "$file"; then
+            continue
+        fi
+        short_count="$({ grep -Fo "<shortDescription>$from_short</shortDescription>" \
+            "$file" || true; } | wc -l | tr -d ' ')"
+        description_count="$({ grep -Fo "<description>$from_description</description>" \
+            "$file" || true; } | wc -l | tr -d ' ')"
+        if [ "$short_count" != "1" ] || [ "$description_count" != "1" ]; then
+            warn "Không đổi nhãn trong $file vì metadata custom khác dự kiến."
+            continue
+        fi
+        sudo sed -i \
+            -e "s|<shortDescription>$from_short</shortDescription>|<shortDescription>$to_short</shortDescription>|" \
+            -e "s|<description>$from_description</description>|<description>$to_description</description>|" \
+            "$file"
+    done
+
+    for file in "$xkb_root/rules/base.lst" "$xkb_root/rules/evdev.lst"; do
+        [ -f "$file" ] || continue
+        grep -Fq "custom          $to_description" "$file" && continue
+        description_count="$({ grep -Fo "custom          $from_description" \
+            "$file" || true; } | wc -l | tr -d ' ')"
+        if [ "$description_count" != "1" ]; then
+            warn "Không đổi nhãn trong $file vì metadata custom khác dự kiến."
+            continue
+        fi
+        sudo sed -i \
+            "s|custom          $from_description|custom          $to_description|" \
+            "$file"
+    done
+}
+
 # --- gỡ cài đặt -------------------------------------------------------------
 
 uninstall() {
@@ -34,7 +95,10 @@ uninstall() {
     rm -f "$PREFIX/bin/h-openkey"
     rm -f "$PREFIX/share/applications/h-openkey.desktop"
     rm -f "$PREFIX/share/icons/hicolor/scalable/apps/h-openkey.svg"
+    rm -f "$PREFIX/share/icons/hicolor/scalable/apps/h-openkey-vi.svg"
+    rm -f "$PREFIX/share/icons/hicolor/scalable/apps/h-openkey-en.svg"
     rm -f "$PREFIX/lib/systemd/user/h-openkey.service"
+    rm -f "$HOME/.config/autostart/h-openkey.desktop"
     rm -f "$HOME/.config/xkb/symbols/hopenkey"
     if grep -q "Managed by H-OpenKey" \
         "$HOME/.config/xkb/rules/evdev.xml" 2>/dev/null; then
@@ -43,6 +107,8 @@ uninstall() {
     local xkb_root
     xkb_root="$(pkg-config --variable=xkb_base xkeyboard-config 2>/dev/null || true)"
     [ -n "$xkb_root" ] || xkb_root="/usr/share/X11/xkb"
+    say "Khôi phục tên mặc định của layout custom (cần mật khẩu sudo)"
+    update_xkb_layout_label "$xkb_root" uninstall
     local symbols_file
     for symbols_file in custom hopenkey; do
         if grep -q "Tu sinh boi H-OpenKey" \
@@ -56,28 +122,42 @@ uninstall() {
         sudo rm -f /etc/udev/rules.d/70-h-openkey.rules
         sudo udevadm control --reload-rules 2>/dev/null || true
     fi
+    if id -nG "$INSTALL_USER" | tr ' ' '\n' | grep -qx input; then
+        warn "Tài khoản vẫn thuộc nhóm input; trình gỡ không tự xoá vì không biết"
+        warn "quyền này có tồn tại trước H-OpenKey hay không. Muốn thu hồi, chạy:"
+        warn "  sudo gpasswd -d $INSTALL_USER input"
+    fi
     systemctl --user daemon-reload 2>/dev/null || true
     if command -v gsettings >/dev/null; then
         local backup="$HOME/.config/openkey/input-sources.backup"
         local sources
         local original_sources
         local engine
-        if [ -s "$backup" ]; then
-            sources="$(cat "$backup")"
-            say "Khôi phục danh sách nguồn nhập trước khi cài H-OpenKey"
-            gsettings set org.gnome.desktop.input-sources sources "$sources" \
-                2>/dev/null || true
-            sources=""
-        else
-            sources="$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null || true)"
-        fi
+        sources="$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null || true)"
         original_sources="$sources"
+        if [ -s "$backup" ]; then
+            local saved_source
+            while IFS= read -r saved_source; do
+                case "$saved_source" in
+                    "('ibus', 'h-direct')"|"('ibus', 'openkey')"|"('xkb', 'hopenkey')"|"('xkb', 'custom')") continue ;;
+                esac
+                [[ "$sources" == *"$saved_source"* ]] && continue
+                case "$sources" in
+                    "[]"|"@a(ss) []") sources="[$saved_source]" ;;
+                    *) sources="${sources%]}, $saved_source]" ;;
+                esac
+            done < <(grep -oE "\\('[^']+', *'[^']+'\\)" "$backup" || true)
+            say "Hợp nhất các nguồn nhập từ bản sao lưu của H-OpenKey cũ"
+        fi
         for engine in h-direct openkey; do
             if printf '%s' "$sources" | grep -q "('ibus', '$engine')"; then
                 sources="$(printf '%s' "$sources" | sed "s/, ('ibus', '$engine')//; s/('ibus', '$engine'), //; s/\[('ibus', '$engine')\]/[]/")"
             fi
         done
         sources="$(printf '%s' "$sources" | sed "s/, ('xkb', 'hopenkey')//; s/('xkb', 'hopenkey'), //; s/\[('xkb', 'hopenkey')\]/[]/; s/, ('xkb', 'custom')//; s/('xkb', 'custom'), //; s/\[('xkb', 'custom')\]/[]/")"
+        case "$sources" in
+            ""|"[]"|"@a(ss) []") sources="[('xkb', 'us')]" ;;
+        esac
         if [ "$sources" != "$original_sources" ]; then
             say "Xoá các nguồn nhập của H-OpenKey khỏi danh sách nguồn nhập"
             gsettings set org.gnome.desktop.input-sources sources \
@@ -86,19 +166,20 @@ uninstall() {
         fi
     fi
     say "Đã gỡ cài đặt. Cấu hình ở ~/.config/openkey vẫn được giữ."
-    say "Bật lại bộ gõ cũ, ví dụ:  systemctl --user start app-org.fcitx.Fcitx5@autostart.service"
     exit 0
 }
 
 SKIP_DEPS=0
 LOCAL_SRC=""
 NO_ENABLE=0
+ACCEPT_US_LAYOUT=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --uninstall)   uninstall ;;
         --skip-deps)   SKIP_DEPS=1 ;;
         --from-source) LOCAL_SRC="${2:-}"; shift ;;
         --no-enable)   NO_ENABLE=1 ;;
+        --accept-us-layout) ACCEPT_US_LAYOUT=1 ;;
         -h|--help)
             sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -117,6 +198,39 @@ check_session() {
     else
         die "Không thấy WAYLAND_DISPLAY lẫn DISPLAY. Hãy chạy trong phiên đồ hoạ."
     fi
+}
+
+confirm_driver_layout() {
+    local desktop="${XDG_CURRENT_DESKTOP:-}:${XDG_SESSION_DESKTOP:-}"
+    case "$desktop" in
+        *GNOME*|*gnome*|*Ubuntu*|*ubuntu*|*Zorin*|*zorin*|*Pop*|*pop*) ;;
+        *) die "Tích hợp tự động hiện chỉ hỗ trợ GNOME; phát hiện '$desktop'. Chưa thay đổi hệ thống." ;;
+    esac
+    command -v gsettings >/dev/null 2>&1 || die \
+        "Tích hợp tự động hiện chỉ hỗ trợ GNOME có gsettings; chưa thay đổi hệ thống."
+    local sources
+    sources="$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" \
+        || die "Không đọc được nguồn nhập GNOME; chưa thay đổi hệ thống."
+    local xkb_root
+    xkb_root="$(pkg-config --variable=xkb_base xkeyboard-config 2>/dev/null || true)"
+    [ -n "$xkb_root" ] || xkb_root="/usr/share/X11/xkb"
+    if [ -e "$xkb_root/symbols/custom" ] && \
+       ! grep -q "Tu sinh boi H-OpenKey" "$xkb_root/symbols/custom"; then
+        die "$xkb_root/symbols/custom thuộc cấu hình khác; chưa thay đổi hệ thống."
+    fi
+    [[ "$sources" == *"('xkb', 'custom')"* ]] && return 0
+    [ "$ACCEPT_US_LAYOUT" -eq 1 ] && return 0
+
+    warn "H-OpenKey cần thêm H-OpenKey Layout dựa trên US (QWERTY)."
+    warn "Các nguồn nhập hiện có vẫn được giữ, nhưng tiếng Việt của H-OpenKey"
+    warn "chưa hỗ trợ AZERTY, QWERTZ, Dvorak hoặc Colemak."
+    printf '   Tiếp tục cài và chọn H-OpenKey Layout? [y/N] '
+    local answer=""
+    read -r answer </dev/tty 2>/dev/null || answer="n"
+    case "$answer" in
+        y|Y) ;;
+        *) die "Đã huỷ trước khi thay đổi hệ thống." ;;
+    esac
 }
 
 # --- phụ thuộc --------------------------------------------------------------
@@ -167,20 +281,13 @@ fetch_source() {
            | grep -o '"browser_download_url": *"[^"]*-src\.tar\.gz"' \
            | head -1 | cut -d'"' -f4 || true)"
 
-    if [ -n "$url" ]; then
-        say "Tải bản phát hành: $url"
-        curl -fsSL "$url" -o "$WORK/src.tar.gz"
-        tar -C "$WORK" -xzf "$WORK/src.tar.gz"
-        SRC="$(find "$WORK" -maxdepth 2 -type d -name linux -path '*/openkey-linux-*' | head -1)"
-        [ -z "$SRC" ] && SRC="$(find "$WORK" -maxdepth 3 -type d -name linux | head -1)"
-    else
-        warn "Bản phát hành mới nhất không kèm gói mã nguồn, tải ảnh chụp nhánh master."
-        say "Tải mã nguồn từ nhánh master"
-        curl -fsSL "https://github.com/$REPO/archive/refs/heads/master.tar.gz" \
-            -o "$WORK/src.tar.gz"
-        tar -C "$WORK" -xzf "$WORK/src.tar.gz"
-        SRC="$(find "$WORK" -maxdepth 4 -type d -path '*/Sources/OpenKey/linux' | head -1)"
-    fi
+    [ -n "$url" ] || die \
+        "Bản phát hành mới nhất không có gói *-src.tar.gz; từ chối cài nhánh master."
+    say "Tải bản phát hành: $url"
+    curl -fsSL "$url" -o "$WORK/src.tar.gz"
+    tar -C "$WORK" -xzf "$WORK/src.tar.gz"
+    SRC="$(find "$WORK" -maxdepth 2 -type d -name linux -path '*/openkey-linux-*' | head -1)"
+    [ -z "$SRC" ] && SRC="$(find "$WORK" -maxdepth 3 -type d -name linux | head -1)"
 
     [ -z "${SRC:-}" ] && die "Không tìm thấy mã nguồn trong gói vừa tải."
     say "Mã nguồn ở $SRC"
@@ -207,57 +314,35 @@ build_install() {
     systemctl --user daemon-reload
 }
 
-# --- bộ gõ có thể gây xung đột ----------------------------------------------
-
-handle_other_ime() {
-    local running=""
-    local name=""
-    local answer=""
-    local file_name=""
-    local f=""
-    local -a desktop_files=()
-    for name in fcitx5 fcitx; do
-        pgrep -x "$name" >/dev/null 2>&1 && running="$name" && break
-    done
-    [ -z "$running" ] && return 0
-
-    warn "Đang có bộ gõ khác chạy: $running"
-    warn "Chỉ một bộ gõ được giữ input method của phiên. OpenKey sẽ khởi động"
-    warn "nhưng KHÔNG gõ được chữ nào cho tới khi $running bị tắt."
-    printf '   Tắt %s ngay bây giờ? [y/N] ' "$running"
-    read -r answer </dev/tty 2>/dev/null || answer="n"
-    case "$answer" in
-        y|Y)
-            systemctl --user disable --now "$running.service" 2>/dev/null || true
-            if [ "$running" = "fcitx5" ]; then
-                systemctl --user stop \
-                    "app-org.fcitx.Fcitx5@autostart.service" 2>/dev/null || true
-                desktop_files=(org.fcitx.Fcitx5.desktop fcitx5.desktop)
-            else
-                desktop_files=(fcitx-autostart.desktop fcitx.desktop)
+# Hoan tac duy nhat cac mask co chu ky do ban H-OpenKey cu tao. Khong dung vao
+# cau hinh autostart ma nguoi dung tu tat hoac bo go khac tu quan ly.
+restore_other_ime_autostart() {
+    local file_name
+    local current
+    local backup
+    for file_name in org.fcitx.Fcitx5.desktop fcitx5.desktop \
+                     fcitx-autostart.desktop fcitx.desktop nimf.desktop \
+                     org.nimf.Nimf.desktop uim.desktop uim-xim.desktop \
+                     kime.desktop gcin.desktop hime.desktop; do
+        current="$HOME/.config/autostart/$file_name"
+        backup="$current.disabled-by-h-openkey"
+        if grep -q '^X-H-OpenKey-Disabled=true$' "$current" 2>/dev/null; then
+            rm -f "$current"
+            if [ -e "$backup" ] || [ -L "$backup" ]; then
+                mv "$backup" "$current"
             fi
-            pkill -x "$running" 2>/dev/null || true
-            for file_name in "${desktop_files[@]}"; do
-                f="$HOME/.config/autostart/$file_name"
-                [ -f "$f" ] && mv "$f" "$f.disabled" && say "Đã tắt tự khởi động: $f"
-            done
-            ;;
-        *)
-            warn "Không bật H-OpenKey để tránh hai bộ gõ chạy song song."
-            return 1 ;;
-    esac
+            say "Khôi phục autostart bộ gõ: $file_name"
+        fi
+    done
 }
 
-# Driver can doc event* va ghi uinput. Rule chi cap quyen cho nguoi dang ngoi
-# tai seat (uaccess); group input la duong lui cho distro khong co logind.
+# Driver can doc event* va ghi uinput. Rule chi cap ACL cho nguoi dang hoat dong
+# tai seat; khong them tai khoan vao nhom input co quyen keylogger vinh vien.
 install_driver_access() {
     say "Cài quyền truy cập evdev/uinput (cần mật khẩu sudo)"
     sudo install -Dm0644 "$SRC/packaging/70-h-openkey.rules" \
         /etc/udev/rules.d/70-h-openkey.rules
     sudo modprobe uinput
-    if getent group input >/dev/null 2>&1; then
-        sudo usermod -aG input "$INSTALL_USER"
-    fi
     sudo udevadm control --reload-rules
     sudo udevadm trigger --subsystem-match=misc --action=change 2>/dev/null || true
     sudo udevadm trigger --subsystem-match=input --action=change 2>/dev/null || true
@@ -268,12 +353,33 @@ configure_driver() {
     command -v gsettings >/dev/null 2>&1 \
         || die "Trình cài đặt hiện cần GNOME/gsettings để kích hoạt layout XKB."
 
-    local backup="$HOME/.config/openkey/input-sources.backup"
     local sources
     sources="$(gsettings get org.gnome.desktop.input-sources sources)"
-    if [ ! -s "$backup" ]; then
-        mkdir -p "$(dirname "$backup")"
-        printf '%s\n' "$sources" >"$backup"
+    local current_value
+    local current_index
+    current_value="$(gsettings get org.gnome.desktop.input-sources current)"
+    current_index="$(printf '%s' "$current_value" | grep -oE '[0-9]+$' || true)"
+    local original_sources="$sources"
+    local updated_sources="$sources"
+    local had_custom=0
+    [[ "$sources" == *"('xkb', 'custom')"* ]] && had_custom=1
+
+    # Ban 1.3.0 tung sao luu roi thay ca danh sach bang moi xkb:custom. Khi cap
+    # nhat, hop nhat cac source trong backup vao cau hinh hien tai de tra lai
+    # engine Nhat/Han cu ma khong lam mat source nguoi dung moi them sau do.
+    local backup="$HOME/.config/openkey/input-sources.backup"
+    if [ -s "$backup" ]; then
+        local saved_source
+        while IFS= read -r saved_source; do
+            case "$saved_source" in
+                "('ibus', 'h-direct')"|"('ibus', 'openkey')") continue ;;
+            esac
+            [[ "$updated_sources" == *"$saved_source"* ]] && continue
+            case "$updated_sources" in
+                "[]"|"@a(ss) []") updated_sources="[$saved_source]" ;;
+                *) updated_sources="${updated_sources%]}, $saved_source]" ;;
+            esac
+        done < <(grep -oE "\\('[^']+', *'[^']+'\\)" "$backup" || true)
     fi
 
     # Don dau vet cua layout tu dang ky cu. Chi xoa rules co chu ky H-OpenKey.
@@ -284,7 +390,7 @@ configure_driver() {
     rm -f "$HOME/.config/openkey/xkb-pending-shell"
 
     # xkeyboard-config da dang ky san layout "custom". Cai symbols vao ten nay
-    # de Mutter doc duoc ma khong sua evdev.xml do goi he thong quan ly.
+    # de Mutter doc dung keymap, sau do chi doi metadata hien thi cua entry.
     local xkb_root
     xkb_root="$(pkg-config --variable=xkb_base xkeyboard-config 2>/dev/null || true)"
     [ -n "$xkb_root" ] || xkb_root="/usr/share/X11/xkb"
@@ -297,21 +403,41 @@ configure_driver() {
     say "Cài symbols H-OpenKey vào $xkb_root/symbols/custom (cần mật khẩu sudo)"
     sudo install -m0644 "$HOME/.config/xkb/symbols/hopenkey" \
         "$xkb_root/symbols/custom"
+    say "Đặt tên nguồn nhập thành H-OpenKey Layout"
+    update_xkb_layout_label "$xkb_root" install
     if grep -q "Tu sinh boi H-OpenKey" \
         "$xkb_root/symbols/hopenkey" 2>/dev/null; then
         sudo rm -f "$xkb_root/symbols/hopenkey"
     fi
 
-    # Chi giu mot source: neu nguoi dung chuyen sang layout khac trong khi
-    # driver dang grab, cac keycode rieng se khong con sinh dung Unicode.
-    say "Kích hoạt layout custom của H-OpenKey (US + Unicode riêng)"
-    gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'custom')]"
-    gsettings set org.gnome.desktop.input-sources current 'uint32 0'
-    if command -v setxkbmap >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+    # Giữ nguyên IBus/Fcitx và các nguồn Nhật, Hàn đang có. Driver trực tiếp
+    # không chiếm input-method slot; nó chỉ cần xkb:custom khi gõ tiếng Việt.
+    local custom_index
+    if [[ "$updated_sources" != *"('xkb', 'custom')"* ]]; then
+        case "$updated_sources" in
+            "[]"|"@a(ss) []") updated_sources="[('xkb', 'custom')]" ;;
+            *) updated_sources="${updated_sources%]}, ('xkb', 'custom')]" ;;
+        esac
+    fi
+    local prefix="${updated_sources%%"('xkb', 'custom')"*}"
+    custom_index="$(
+        { printf '%s' "$prefix" | grep -oF "('" || true; } | wc -l | tr -d ' '
+    )"
+    if [ "$updated_sources" != "$original_sources" ]; then
+        say "Cập nhật xkb:custom; giữ nguyên và khôi phục các nguồn nhập hiện có"
+        gsettings set org.gnome.desktop.input-sources sources "$updated_sources"
+    fi
+    if [ "$had_custom" -eq 0 ]; then
+        say "Kích hoạt layout custom của H-OpenKey (US + Unicode riêng)"
+        gsettings set org.gnome.desktop.input-sources current "uint32 $custom_index"
+        current_index="$custom_index"
+    else
+        say "Giữ nguyên nguồn nhập đang dùng; xkb:custom đã có sẵn"
+    fi
+    if [ "$current_index" = "$custom_index" ] && \
+       command -v setxkbmap >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
         setxkbmap -layout custom 2>/dev/null || true
     fi
-    systemctl --user unset-environment GTK_IM_MODULE QT_IM_MODULE XMODIFIERS \
-        2>/dev/null || true
 }
 
 # --- chạy -------------------------------------------------------------------
@@ -319,6 +445,7 @@ configure_driver() {
 main() {
     say "OpenKey cho Linux — bộ gõ tiếng Việt"
     check_session
+    confirm_driver_layout
     if [ "$SKIP_DEPS" -eq 1 ]; then
         say "Bỏ qua bước cài phụ thuộc theo yêu cầu"
     else
@@ -326,12 +453,9 @@ main() {
     fi
     fetch_source
     build_install
+    restore_other_ime_autostart
     install_driver_access
-    if ! handle_other_ime; then
-        NO_ENABLE=1
-    else
-        configure_driver
-    fi
+    configure_driver
 
     if [ "$NO_ENABLE" -eq 1 ]; then
         say "Xong. Bỏ qua bước bật service theo yêu cầu."
@@ -339,7 +463,10 @@ main() {
     fi
 
     say "Bật chạy cùng phiên đăng nhập"
-    systemctl --user enable --now h-openkey.service
+    systemctl --user enable h-openkey.service
+    # enable --now khong nap lai process neu ban cu dang chay. Restart de lan
+    # cai/cap nhat nao cung dua binary, watchdog va layout moi vao su dung ngay.
+    systemctl --user restart h-openkey.service
 
     sleep 2
     if systemctl --user is-active --quiet h-openkey.service; then

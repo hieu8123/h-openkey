@@ -15,6 +15,7 @@
 
 #include <linux/input.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -65,12 +66,19 @@ public:
 
     std::function<void(const EvdevKeyEvent&)> onKey;
     std::function<void()> onContextBreak;
+    // true: epoll da tra su kien va luong dang dispatch; false: da xu ly xong
+    // va sap quay lai ngu. Goi true lai sau moi event de lam moi heartbeat.
+    std::function<void(bool)> onDispatchState;
+    // Phat theo su kien moi khi so ban phim chua grab thay doi. UI co the canh
+    // bao sau vai giay ma khong can quet /dev/input theo timer.
+    std::function<void(size_t)> onPendingKeyboardCountChanged;
 
 private:
     struct Device {
         int fd = -1;
         std::string path;
         bool grabbedKeyboard = false;
+        bool pendingKeyboard = false;
     };
 
     bool looksLikeKeyboard(int fd) const;
@@ -78,7 +86,9 @@ private:
     bool tryAddDevice(const std::string& path, bool* permissionDenied,
                       bool* forbiddenCollision, bool* heldKeys = nullptr);
     bool tryAddPointerDevice(const std::string& path);
+    bool tryGrabPendingDevice(int fd);
     void removeDevice(int fd);
+    void publishPendingKeyboardCount();
 
     std::vector<Device> _devices;
     std::vector<uint16_t> _forbiddenCodes;
@@ -87,6 +97,7 @@ private:
     int _inotifyFd = -1;
     int _inputWatch = -1;
     int _wakeFd = -1;
+    size_t _lastPendingKeyboardCount = 0;
 
     // Compositor/X server khong con thay phim bo tro nua sau khi grab, nen
     // phai tu dem lay: khong ai khac lam ho duoc.

@@ -50,6 +50,9 @@ enum class KeyVerdict {
 struct DeleteRequest {
     uint32_t utf8Bytes = 0;   // cho delete_surrounding_text
     uint32_t keyPresses = 0;  // so lan BackSpace phat qua uinput
+    // Thanh dia chi trinh duyet co the dang chon phan autocomplete. Chen mot
+    // ky tu dem truoc se chot/huy selection de Backspace xoa dung van ban da go.
+    bool clearAutocomplete = false;
 };
 
 class IBackend {
@@ -80,6 +83,18 @@ public:
 
     virtual const std::string& lastError() const = 0;
 
+    // Màn hình khoá không cho driver biết ô đang nhập là mật khẩu. Backend
+    // trực tiếp phải chuyển tiếp nguyên phím và tuyệt đối không gọi engine.
+    virtual void setSecureInput(bool) {}
+
+    // Watchdog chi doc trang thai atomic, tuyet doi khong cho phep lay mutex
+    // cua duong go. Backend rong va cac backend khong can bao ve mac dinh khoe.
+    virtual bool watchdogHealthy() const { return true; }
+
+    // Canh bao van hanh khong lam backend that bai han (vi du mot ban phim
+    // dang cho nha phim nen chua grab). UI doc chuoi nay sau mot khoang an han.
+    virtual std::string runtimeWarning() const { return {}; }
+
     // File descriptor de vong lap su kien cua ung dung theo doi, -1 neu backend
     // khong can. Khi fd san sang doc, goi dispatchEvents().
     virtual int eventFd() const { return -1; }
@@ -107,10 +122,15 @@ public:
         _contextBreakHandler = std::move(h);
     }
 
+    void setRuntimeStatusHandler(std::function<void()> h) {
+        _runtimeStatusHandler = std::move(h);
+    }
+
 protected:
     std::function<KeyVerdict(const KeyEvent&)> _handler;
     std::function<void(const std::string&)> _focusHandler;
     std::function<void()> _contextBreakHandler;
+    std::function<void()> _runtimeStatusHandler;
 };
 
 // Ban Linux chi co mot duong: evdev -> OpenKeyCore -> uinput.

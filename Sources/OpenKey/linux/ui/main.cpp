@@ -7,7 +7,9 @@
 #include <QFileInfo>
 #include <QLibraryInfo>
 #include <QMessageBox>
+#include <QProcess>
 #include <QSocketNotifier>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QSystemTrayIcon>
 #include <QWindow>
@@ -18,10 +20,13 @@
 #include <cstring>
 #include <unistd.h>
 
+#include "AppState.h"
 #include "Backend.h"
 #include "Config.h"
 #include "DriverKeymap.h"
 #include "OpenKeyCore.h"
+#include "ProcessWatchdog.h"
+#include "SessionLockMonitor.h"
 #include "MainWindow.h"
 #include "SingleInstance.h"
 #include "StartupManager.h"
@@ -57,6 +62,69 @@ void selectAvailableQtPlatform() {
     }
 }
 
+bool runBoundedCommand(const QString& name, const QStringList& arguments,
+                       QByteArray* output, QString& error) {
+    const QString executable = QStandardPaths::findExecutable(name);
+    if (executable.isEmpty()) {
+        error = QString("không tìm thấy lệnh %1").arg(name);
+        return false;
+    }
+    QProcess process;
+    process.start(executable, arguments, QIODevice::ReadOnly);
+    if (!process.waitForStarted(1000) || !process.waitForFinished(2000)) {
+        process.kill();
+        process.waitForFinished(500);
+        error = QString("lệnh %1 không phản hồi").arg(name);
+        return false;
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        error = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        if (error.isEmpty()) error = QString("lệnh %1 thất bại").arg(name);
+        return false;
+    }
+    if (output) *output = process.readAllStandardOutput();
+    return true;
+}
+
+bool usesGnomeInputSources() {
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP") + ":" +
+                            qEnvironmentVariable("XDG_SESSION_DESKTOP");
+    return desktop.contains("gnome", Qt::CaseInsensitive) ||
+           desktop.contains("ubuntu", Qt::CaseInsensitive) ||
+           desktop.contains("zorin", Qt::CaseInsensitive) ||
+           desktop.contains("pop", Qt::CaseInsensitive);
+}
+
+bool activateDriverInputSource(QString& error) {
+    static const QString schema = "org.gnome.desktop.input-sources";
+    QByteArray sources;
+    if (!runBoundedCommand("gsettings", {"get", schema, "sources"},
+                           &sources, error)) {
+        return false;
+    }
+    size_t index = 0;
+    if (!openkey::findDriverSourceIndex(sources.toStdString(), index)) {
+        error = "không có H-OpenKey Layout (xkb:custom) trong nguồn nhập GNOME; "
+                "hãy chạy lại trình cài đặt";
+        return false;
+    }
+    if (!runBoundedCommand("gsettings",
+                           {"set", schema, "current",
+                            QString("uint32 %1").arg(index)},
+                           nullptr, error)) {
+        return false;
+    }
+
+    // GNOME cap nhat Wayland qua GSettings. Dong bo them XWayland, nhung loi
+    // setxkbmap khong duoc lam that bai nguon Wayland vua chuyen thanh cong.
+    if (qEnvironmentVariableIsSet("DISPLAY")) {
+        QString ignored;
+        runBoundedCommand("setxkbmap", {"-layout", "custom"}, nullptr,
+                          ignored);
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -84,7 +152,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::string activationError;
-        if (!openkey::driverXkbLayoutIsActive(activationError)) {
+        if (!openkey::driverXkbLayoutIsInstalled(activationError)) {
             std::printf("Đã cài layout XKB và chọn driver trực tiếp. %s.\n",
                         activationError.c_str());
         } else {
@@ -112,14 +180,25 @@ int main(int argc, char** argv) {
     }
     if (!instance.claim()) {
         std::fprintf(stderr,
-                     "OpenKey: không giành được ổ cắm một-bản-duy-nhất, "
-                     "vẫn chạy nhưng không chặn được bản thứ hai\n");
+                     "OpenKey: một bản khác đang khởi động; từ chối chạy bản "
+                     "thứ hai để không grab bàn phím hai lần\n");
+        instance.notifyRunningInstance();
+        return 0;
     }
 
     openkey::Config config;
     config.load();
     config.loadMacroTable();
     config.loadSmartSwitchTable();
+
+    QString sourceActivationError;
+    const bool manageGnomeSource = usesGnomeInputSources();
+    if (manageGnomeSource && vLanguage == 1 &&
+        !activateDriverInputSource(sourceActivationError)) {
+        // Khong cho core phat carrier Unicode trong khi GNOME van dung keymap
+        // Mozc/IBus/us. Che do Anh an toan hon viec nuot ky tu khong thong bao.
+        vLanguage = 0;
+    }
 
     std::string notice;
     auto backend = openkey::createBackend(config.backend, notice);
@@ -149,40 +228,14 @@ int main(int argc, char** argv) {
     openkey::OpenKeyCore core(*backend);
     core.attach();
 
-    std::printf("OpenKey: dùng backend %s\n", backend->name());
+    openkey::SessionLockMonitor lockMonitor;
+    QObject::connect(&lockMonitor, &openkey::SessionLockMonitor::lockedChanged,
+                     &app, [&backend](bool locked) {
+                         backend->setSecureInput(locked);
+                     });
+    lockMonitor.start();
 
-    const QStringList conflicts = openkey::conflictingInputMethods();
-    if (!conflicts.isEmpty()) {
-        const QString names = conflicts.join(", ");
-        const auto answer = QMessageBox::question(
-            nullptr, "Xung đột bộ gõ",
-            QString("Đang có bộ gõ khác chạy hoặc được thiết lập khởi động cùng "
-                    "phiên đăng nhập: %1.\n\n"
-                    "Dừng bộ gõ đó và vô hiệu hoá cơ chế tự khởi động của nó để "
-                    "tiếp tục sử dụng H-OpenKey?")
-                .arg(names),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-        QString error;
-        if (answer != QMessageBox::Yes ||
-            !openkey::disableInputMethods(conflicts, error)) {
-            QString ignored;
-            openkey::setOpenKeyAutoStartEnabled(false, ignored);
-            const QString reason = answer == QMessageBox::Yes
-                                       ? "Không tắt được bộ gõ khác: " + error
-                                       : "Bạn đã chọn giữ bộ gõ hiện tại.";
-            QMessageBox::information(
-                nullptr, "H-OpenKey",
-                reason + "\n\nH-OpenKey sẽ tắt và không khởi động cùng phiên đăng "
-                         "nhập để hai bộ gõ không chạy đồng thời.");
-            backend->stop();
-            return 0;
-        }
-        QMessageBox::information(
-            nullptr, "Đã tắt bộ gõ cũ",
-            "Đã tắt bộ gõ gây xung đột. H-OpenKey dùng driver bàn phím trực "
-            "tiếp, không dùng IBus/preedit. Hãy đăng xuất rồi đăng nhập lại "
-            "để môi trường của phiên được cập nhật đầy đủ.");
-    }
+    std::printf("OpenKey: dùng backend %s\n", backend->name());
 
     QSocketNotifier* signalNotifier = nullptr;
     if (pipe(g_signalPipe) == 0) {
@@ -195,15 +248,51 @@ int main(int argc, char** argv) {
 
     openkey::TrayIcon tray(config, core);
 
-    // Smart Switch Key co the tu doi ngon ngu khi chuyen ung dung; bieu tuong
-    // khay phai phan anh dieu do, neu khong nguoi dung khong biet dang o che do nao.
+    // Phim tat va lan kich hoat sau khi doi source deu co the doi ngon ngu tu
+    // luong khac; bieu tuong khay phai luon phan anh trang thai moi.
     core.onStateChanged = [&tray] {
         QMetaObject::invokeMethod(&tray, [&tray] { tray.refresh(); },
                                   Qt::QueuedConnection);
     };
+    if (manageGnomeSource) {
+        core.onVietnameseActivationRequested = [&app, &core, &tray] {
+            QMetaObject::invokeMethod(
+                &app,
+                [&core, &tray] {
+                    QString error;
+                    const bool activated = activateDriverInputSource(error);
+                    core.completeVietnameseActivation(activated);
+                    if (!activated) {
+                        tray.showWarning(
+                            QObject::tr("Không bật tiếng Việt: %1").arg(error));
+                    }
+                },
+                Qt::QueuedConnection);
+        };
+    }
+
+    auto scheduleRuntimeWarning = [&backend, &tray] {
+        const QString warning =
+            QString::fromStdString(backend->runtimeWarning());
+        if (warning.isEmpty()) {
+            tray.setRuntimeWarning({});
+            return;
+        }
+        QTimer::singleShot(3000, &tray, [&backend, &tray] {
+            tray.setRuntimeWarning(
+                QString::fromStdString(backend->runtimeWarning()));
+        });
+    };
+    backend->setRuntimeStatusHandler([&tray, scheduleRuntimeWarning] {
+        QMetaObject::invokeMethod(&tray, scheduleRuntimeWarning,
+                                  Qt::QueuedConnection);
+    });
+    scheduleRuntimeWarning();
     // Core va callback giao dien da san sang; tu day luong epoll rieng moi bat
     // dau doc phím. Qt khong con nam tren duong go.
     backend->activate();
+    openkey::ProcessWatchdog watchdog(*backend);
+    watchdog.start();
 
     openkey::MainWindow window(config, core);
     window.resize(680, 520);
@@ -235,6 +324,11 @@ int main(int argc, char** argv) {
     // Qt tự thêm biểu tượng khi khay xuất hiện sau thời điểm ứng dụng khởi động,
     // nhưng chỉ khi QSystemTrayIcon đã được đặt visible từ trước.
     tray.show();
+    if (!sourceActivationError.isEmpty()) {
+        tray.showWarning(
+            QObject::tr("Đã giữ chế độ tiếng Anh để tránh mất chữ: %1")
+                .arg(sourceActivationError));
+    }
 
     // Dung khi lam giao dien: tu chup cua so ra tep roi thoat, de doi chieu
     // thiet ke ma khong can cong cu chup anh cua desktop.
@@ -250,7 +344,9 @@ int main(int argc, char** argv) {
     backend->flush();
     const int result = app.exec();
 
-    // Dung luong ban phim truoc khi doc va luu cac bien engine tu UI thread.
+    // Tat watchdog truoc khi ha backend de trang thai dung binh thuong khong bi
+    // hieu nham la luong dispatch da chet.
+    watchdog.stop();
     backend->stop();
     config.save();
     config.saveMacroTable();

@@ -135,14 +135,20 @@ bool EvdevKeyboard::tryAddDevice(const std::string& path, bool* permissionDenied
         }
     }
 
-    // Khong grab giua mot lan nhan/nhả. Neu press da toi compositor tu thiet
-    // bi that ma release lai duoc phat qua uinput, Mutter se giu phim that o
-    // trang thai down vo han va tu lap no. Bo qua tam thoi; rescan se nhan
-    // thiet bi ngay sau khi nguoi dung nha het phim.
+    // Khong grab giua mot lan nhan/nha. Van theo doi fd de chinh su kien release
+    // cuoi cung danh thuc epoll; nhu vay khong can polling hay doi hotplug.
     if (hasHeldKeys(fd)) {
         if (heldKeys) *heldKeys = true;
-        close(fd);
-        return false;
+        struct epoll_event pending {};
+        pending.events = EPOLLIN;
+        pending.data.fd = fd;
+        if (epoll_ctl(_epollFd, EPOLL_CTL_ADD, fd, &pending) != 0) {
+            close(fd);
+            return false;
+        }
+        _devices.push_back({fd, path, false, true});
+        publishPendingKeyboardCount();
+        return true;
     }
     if (ioctl(fd, EVIOCGRAB, 1) != 0) {
         close(fd);
@@ -160,6 +166,25 @@ bool EvdevKeyboard::tryAddDevice(const std::string& path, bool* permissionDenied
 
     _devices.push_back({fd, path, true});
     return true;
+}
+
+bool EvdevKeyboard::tryGrabPendingDevice(int fd) {
+    if (hasHeldKeys(fd) || ioctl(fd, EVIOCGRAB, 1) != 0) return false;
+    // Dong cua so dua giua EVIOCGKEY va EVIOCGRAB: neu mot phim vua duoc nhan,
+    // bo grab ngay de compositor van nhan release cua lan nhan do.
+    if (hasHeldKeys(fd)) {
+        ioctl(fd, EVIOCGRAB, 0);
+        return false;
+    }
+    for (Device& device : _devices) {
+        if (device.fd != fd) continue;
+        device.grabbedKeyboard = true;
+        device.pendingKeyboard = false;
+        publishPendingKeyboardCount();
+        return true;
+    }
+    ioctl(fd, EVIOCGRAB, 0);
+    return false;
 }
 
 bool EvdevKeyboard::tryAddPointerDevice(const std::string& path) {
@@ -208,6 +233,19 @@ void EvdevKeyboard::removeDevice(int fd) {
             _devices.erase(_devices.begin() + static_cast<long>(i));
             break;
         }
+    }
+    publishPendingKeyboardCount();
+}
+
+void EvdevKeyboard::publishPendingKeyboardCount() {
+    size_t count = 0;
+    for (const Device& device : _devices) {
+        if (device.pendingKeyboard) ++count;
+    }
+    if (count == _lastPendingKeyboardCount) return;
+    _lastPendingKeyboardCount = count;
+    if (onPendingKeyboardCountChanged) {
+        onPendingKeyboardCountChanged(count);
     }
 }
 
@@ -294,7 +332,8 @@ bool EvdevKeyboard::start(std::string& error,
 
     bool hasKeyboard = false;
     for (const Device& device : _devices) {
-        hasKeyboard = hasKeyboard || device.grabbedKeyboard;
+        hasKeyboard = hasKeyboard || device.grabbedKeyboard ||
+                      device.pendingKeyboard;
     }
     if (!hasKeyboard) {
         stop();
@@ -317,6 +356,7 @@ void EvdevKeyboard::stop() {
         close(d.fd);
     }
     _devices.clear();
+    publishPendingKeyboardCount();
     if (_inotifyFd >= 0) {
         if (_inputWatch >= 0) inotify_rm_watch(_inotifyFd, _inputWatch);
         close(_inotifyFd);
@@ -349,6 +389,8 @@ void EvdevKeyboard::waitAndDispatch(int timeoutMs) {
 
     struct epoll_event events[16];
     const int n = epoll_wait(_epollFd, events, 16, timeoutMs);
+    if (n <= 0) return;
+    if (onDispatchState) onDispatchState(true);
     bool needsRescan = false;
     for (int i = 0; i < n; i++) {
         const int fd = events[i].data.fd;
@@ -381,9 +423,11 @@ void EvdevKeyboard::waitAndDispatch(int timeoutMs) {
         }
 
         bool grabbedKeyboard = false;
+        bool pendingKeyboard = false;
         for (const Device& device : _devices) {
             if (device.fd == fd) {
                 grabbedKeyboard = device.grabbedKeyboard;
+                pendingKeyboard = device.pendingKeyboard;
                 break;
             }
         }
@@ -398,6 +442,7 @@ void EvdevKeyboard::waitAndDispatch(int timeoutMs) {
             struct input_event ev;
             const ssize_t got = read(fd, &ev, sizeof(ev));
             if (got == static_cast<ssize_t>(sizeof(ev))) {
+                if (onDispatchState) onDispatchState(true);
                 if (ev.type == EV_KEY && grabbedKeyboard) {
                     handleEvent(ev);
                 } else if (ev.type == EV_KEY && ev.value == 1 &&
@@ -417,9 +462,12 @@ void EvdevKeyboard::waitAndDispatch(int timeoutMs) {
         }
         if (dead) {
             removeDevice(fd);
+        } else if (pendingKeyboard) {
+            tryGrabPendingDevice(fd);
         }
     }
     if (needsRescan) rescan();
+    if (onDispatchState) onDispatchState(false);
 }
 
 void EvdevKeyboard::handleEvent(const struct input_event& ev) {

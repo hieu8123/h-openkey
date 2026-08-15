@@ -153,6 +153,9 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
 
 void TrayIcon::rebuildIcon() {
     _tray.setIcon(makeIcon(vLanguage == 1));
+    _tray.setToolTip(_runtimeWarning.isEmpty()
+                         ? tr("H-OpenKey")
+                         : tr("H-OpenKey — %1").arg(_runtimeWarning));
     if (_languageAction) {
         _languageAction->setChecked(vLanguage == 1);
     }
@@ -175,5 +178,16 @@ void TrayIcon::refresh() {
 }
 
 void TrayIcon::show() { _tray.show(); }
+
+void TrayIcon::showWarning(const QString& message) {
+    _tray.showMessage(tr("H-OpenKey"), message, QSystemTrayIcon::Warning, 8000);
+}
+
+void TrayIcon::setRuntimeWarning(const QString& message) {
+    if (_runtimeWarning == message) return;
+    _runtimeWarning = message;
+    rebuildIcon();
+    if (!message.isEmpty()) showWarning(message);
+}
 
 } // namespace openkey

@@ -25,6 +25,13 @@ namespace {
 #define DRIVER_LOG(...) debugLog("driver", __VA_ARGS__)
 
 constexpr uint32_t kEvdevToX11 = 8;
+constexpr auto kDriverHangTimeout = std::chrono::seconds(2);
+
+int64_t steadyNowNanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
 
 bool isModifier(uint16_t code) {
     switch (code) {
@@ -62,6 +69,9 @@ public:
     void stop() override;
     const std::string& lastError() const override { return _error; }
     std::string focusedAppId() override { return {}; }
+    void setSecureInput(bool secure) override;
+    bool watchdogHealthy() const override;
+    std::string runtimeWarning() const override;
 
     void sendResult(const DeleteRequest& del, const std::u32string& out) override;
     void forwardKey(const KeyEvent& ev) override;
@@ -82,14 +92,21 @@ private:
     std::set<uint16_t> _tappedPhysicalKeys;
     bool _capsLock = false;
     std::atomic<bool> _running{false};
+    // 0 khi epoll dang ngu. Khac 0 khi da co event va duong dispatch chua tra
+    // ve; moi event cap nhat lai moc nay. Watchdog chi doc atomic nay.
+    std::atomic<int64_t> _dispatchHeartbeatNs{0};
+    std::atomic<bool> _outputFailed{false};
+    std::atomic<bool> _secureInput{false};
+    std::atomic<bool> _resetRequested{false};
+    std::atomic<size_t> _pendingKeyboardCount{0};
     std::thread _worker;
     BackendCaps _caps;
     std::string _error;
 };
 
 bool DriverBackend::start() {
-    if (!driverXkbLayoutIsActive(_error)) {
-        _error = "layout H-OpenKey chưa hoạt động: " + _error;
+    if (!driverXkbLayoutIsInstalled(_error)) {
+        _error = "layout H-OpenKey chưa được cài đúng: " + _error;
         return false;
     }
     // GNOME/Mutter khong phai luc nao cung dong bo keymap moi sang XWayland
@@ -105,6 +122,10 @@ bool DriverBackend::start() {
     // chi la thoi gian khoi dong, khong nam tren duong go phim.
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
+    _evdev.onPendingKeyboardCountChanged = [this](size_t count) {
+        _pendingKeyboardCount.store(count, std::memory_order_release);
+        if (_runtimeStatusHandler) _runtimeStatusHandler();
+    };
     if (!_evdev.start(_error, driverReservedKeycodes(),
                       kOpenKeyVirtualKeyboardName)) {
         _uinput.stop();
@@ -114,6 +135,11 @@ bool DriverBackend::start() {
     _evdev.onContextBreak = [this] {
         if (_contextBreakHandler) _contextBreakHandler();
     };
+    _evdev.onDispatchState = [this](bool active) {
+        _dispatchHeartbeatNs.store(active ? steadyNowNanoseconds() : 0,
+                                   std::memory_order_release);
+    };
+    _outputFailed.store(false, std::memory_order_release);
 
     _caps.canForwardKey = true;
     _caps.hasSurroundingText = false;
@@ -149,6 +175,37 @@ void DriverBackend::inputLoop() {
     }
 }
 
+bool DriverBackend::watchdogHealthy() const {
+    // Watchdog chi duoc khoi dong sau activate(). Neu khong tao duoc worker thi
+    // grab da mo nhung khong co ai bom event; phai fail-fast ngay.
+    if (!_running.load(std::memory_order_acquire)) return false;
+    if (_outputFailed.load(std::memory_order_acquire)) return false;
+    const int64_t heartbeat =
+        _dispatchHeartbeatNs.load(std::memory_order_acquire);
+    if (heartbeat == 0) return true; // epoll_wait dang ngu, khong phai hang
+    return steadyNowNanoseconds() - heartbeat <=
+           std::chrono::duration_cast<std::chrono::nanoseconds>(
+               kDriverHangTimeout)
+               .count();
+}
+
+std::string DriverBackend::runtimeWarning() const {
+    const size_t count =
+        _pendingKeyboardCount.load(std::memory_order_acquire);
+    if (count == 0) return {};
+    return std::to_string(count) +
+           " bàn phím chưa được H-OpenKey nhận vì vẫn báo có phím đang giữ. "
+           "Hãy nhả hết phím; nếu cảnh báo không mất, hãy rút thiết bị HID "
+           "bị lỗi hoặc khởi động lại service.";
+}
+
+void DriverBackend::setSecureInput(bool secure) {
+    _secureInput.store(secure, std::memory_order_release);
+    // Core sống ở worker; chỉ yêu cầu reset tại event kế tiếp để không gọi nó
+    // đồng thời từ luồng DBus/Qt.
+    _resetRequested.store(true, std::memory_order_release);
+}
+
 void DriverBackend::sendVirtualKey(uint16_t code, int32_t value) {
     if (value == 1) {
         _virtualKeysDown.insert(code);
@@ -157,6 +214,7 @@ void DriverBackend::sendVirtualKey(uint16_t code, int32_t value) {
     }
     if (!_uinput.sendKey(code, value)) {
         _error = "không ghi được sự kiện vào /dev/uinput";
+        _outputFailed.store(true, std::memory_order_release);
     }
 }
 
@@ -190,8 +248,15 @@ void DriverBackend::handleKey(const EvdevKeyEvent& raw) {
     ev.super = raw.super;
     _capsLock = raw.capsLock;
 
+    if (_resetRequested.exchange(false, std::memory_order_acq_rel) &&
+        _contextBreakHandler) {
+        _contextBreakHandler();
+    }
+
     const uint16_t physical = static_cast<uint16_t>(ev.keycode - kEvdevToX11);
-    const KeyVerdict verdict = _handler ? _handler(ev) : KeyVerdict::Forward;
+    const KeyVerdict verdict = _secureInput.load(std::memory_order_acquire)
+                                   ? KeyVerdict::Forward
+                                   : (_handler ? _handler(ev) : KeyVerdict::Forward);
 
     if (!ev.pressed) {
         const bool wasSwallowed = _swallowedPhysicalKeys.erase(physical) > 0;
@@ -258,6 +323,8 @@ void DriverBackend::sendResult(const DeleteRequest& del,
     const std::vector<uint16_t> released = releaseHeldModifiers();
     if (_capsLock) tapVirtualKey(KEY_CAPSLOCK);
 
+    if (del.clearAutocomplete) typeCodePoint(0x202F);
+    if (del.clearAutocomplete) tapVirtualKey(KEY_BACKSPACE);
     for (uint32_t i = 0; i < del.keyPresses; ++i) {
         tapVirtualKey(KEY_BACKSPACE);
     }
@@ -267,13 +334,14 @@ void DriverBackend::sendResult(const DeleteRequest& del,
     restoreHeldModifiers(released);
     if (!_uinput.endBatch()) {
         _error = "không ghi được gói sự kiện vào /dev/uinput";
+        _outputFailed.store(true, std::memory_order_release);
     }
 }
 
 } // namespace
 
 std::unique_ptr<IBackend> makeDriverBackend(std::string& error) {
-    if (!driverXkbLayoutIsActive(error)) return nullptr;
+    if (!driverXkbLayoutIsInstalled(error)) return nullptr;
     if (access("/dev/uinput", W_OK) != 0) {
         error = "không có quyền ghi /dev/uinput; hãy cài udev rule của H-OpenKey";
         return nullptr;

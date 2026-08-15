@@ -3,6 +3,11 @@ target_link_libraries(test_typing PRIVATE openkey_core)
 target_include_directories(test_typing PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME typing COMMAND test_typing)
 
+add_executable(test_debug_log test_debug_log.cpp)
+target_link_libraries(test_debug_log PRIVATE openkey_core)
+target_include_directories(test_debug_log PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME debug_log COMMAND test_debug_log)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TEST_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 add_executable(test_driver test_driver.cpp)

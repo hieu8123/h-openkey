@@ -15,6 +15,7 @@
 #define OPENKEY_LINUX_SINGLEINSTANCE_H
 
 #include <QLocalServer>
+#include <QLockFile>
 #include <QObject>
 #include <QString>
 
@@ -39,7 +40,9 @@ signals:
 
 private:
     static QString socketName();
+    static QString lockPath();
 
+    QLockFile _lock;
     QLocalServer _server;
 };
 

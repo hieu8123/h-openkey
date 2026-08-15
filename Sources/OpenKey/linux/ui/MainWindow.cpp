@@ -19,7 +19,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QTimer>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -323,16 +322,10 @@ QWidget* MainWindow::buildSystemTab() {
     int row = 0;
     _autoStart = new QCheckBox(tr("Khởi động H-OpenKey cùng phiên đăng nhập"), page);
     _autoStart->setToolTip(
-        tr("Nếu có bộ gõ khác như fcitx5, H-OpenKey sẽ hỏi trước khi tắt nó."));
+        tr("Không tắt IBus, Fcitx hoặc các bộ gõ Nhật/Hàn đang có."));
     grid->addWidget(_autoStart, row++, 0);
     connect(_autoStart, &QCheckBox::toggled, this, &MainWindow::setAutoStart);
 
-    addCheck(grid, row++, 0, tr("Chuyển chế độ thông minh theo ứng dụng"),
-             &vUseSmartSwitchKey,
-             tr("Nhớ ứng dụng nào dùng tiếng Việt, ứng dụng nào dùng tiếng Anh"));
-    addCheck(grid, row++, 0, tr("Tự nhớ bảng mã theo ứng dụng"), &vRememberCode);
-    addCheck(grid, row++, 0, tr("Tắt tiếng Việt khi dùng bố cục bàn phím khác"),
-             &vOtherLanguage);
     layout->addLayout(grid);
 
     layout->addSpacing(12);
@@ -353,54 +346,6 @@ QWidget* MainWindow::buildSystemTab() {
 void MainWindow::setAutoStart(bool enabled) {
     if (_loading) return;
 
-    if (enabled) {
-        const QStringList conflicts = conflictingInputMethods();
-        if (!conflicts.isEmpty()) {
-            const QString names = conflicts.join(", ");
-            const auto answer = QMessageBox::question(
-                this, tr("Xung đột bộ gõ"),
-                tr("Đang có bộ gõ khác chạy hoặc được thiết lập khởi động cùng "
-                   "phiên đăng nhập: %1.\n\n"
-                   "Dừng bộ gõ đó và vô hiệu hoá cơ chế tự khởi động của nó để "
-                   "chỉ sử dụng H-OpenKey?")
-                    .arg(names),
-                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-            if (answer != QMessageBox::Yes) {
-                QString ignored;
-                setOpenKeyAutoStartEnabled(false, ignored);
-                _loading = true;
-                _autoStart->setChecked(false);
-                _loading = false;
-                QMessageBox::information(
-                    this, tr("H-OpenKey"),
-                    tr("H-OpenKey sẽ tắt để không chạy song song với %1.").arg(names));
-                QTimer::singleShot(0, qApp, &QApplication::quit);
-                return;
-            }
-
-            QString disableError;
-            if (!disableInputMethods(conflicts, disableError)) {
-                QString ignored;
-                setOpenKeyAutoStartEnabled(false, ignored);
-                QMessageBox::warning(
-                    this, tr("Không tắt được bộ gõ khác"),
-                    tr("%1\n\nH-OpenKey sẽ tắt và không khởi động cùng phiên đăng "
-                       "nhập để tránh hai bộ gõ chạy đồng thời.")
-                        .arg(disableError));
-                _loading = true;
-                _autoStart->setChecked(false);
-                _loading = false;
-                QTimer::singleShot(0, qApp, &QApplication::quit);
-                return;
-            }
-            QMessageBox::information(
-                this, tr("Đã tắt bộ gõ cũ"),
-                tr("Đã tắt bộ gõ gây xung đột. H-OpenKey dùng driver bàn phím "
-                   "trực tiếp, không dùng IBus/preedit. Hãy đăng xuất rồi đăng "
-                   "nhập lại để môi trường của phiên được cập nhật đầy đủ."));
-        }
-    }
-
     QString error;
     if (!setOpenKeyAutoStartEnabled(enabled, error)) {
         enabled = false;
@@ -419,8 +364,9 @@ QWidget* MainWindow::buildDebugGroup(QWidget* parent) {
     auto* box = new QVBoxLayout(group);
 
     auto* hint = new QLabel(
-        tr("Gặp lỗi gõ? Bấm nút bên dưới rồi gõ lại cho lỗi tái hiện, sau đó "
-           "dừng ghi và gửi tệp nhật ký cho người phát triển."),
+        tr("CẢNH BÁO: nhật ký ghi mã phím và văn bản, có thể làm lộ mật khẩu, "
+           "OTP hoặc dữ liệu riêng tư. Chỉ bật ngay trước khi tái hiện lỗi, "
+           "dừng ngay sau đó và tự kiểm tra toàn bộ tệp trước khi gửi."),
         group);
     hint->setWordWrap(true);
     box->addWidget(hint);
@@ -457,7 +403,7 @@ QWidget* MainWindow::buildDebugGroup(QWidget* parent) {
 }
 
 void MainWindow::toggleDebugLogging() {
-    const bool wantOn = !openkey::debugLoggingEnabled();
+    const bool wantOn = !openkey::debugFileLoggingEnabled();
     if (!openkey::setDebugLogging(wantOn)) {
         QMessageBox::warning(this, tr("H-OpenKey"),
                              tr("Không mở được tệp nhật ký:\n%1")
@@ -467,7 +413,7 @@ void MainWindow::toggleDebugLogging() {
 }
 
 void MainWindow::refreshDebugUi() {
-    const bool on = openkey::debugLoggingEnabled();
+    const bool on = openkey::debugFileLoggingEnabled();
     _debugToggle->setText(on ? tr("Dừng ghi nhật ký") : tr("Bắt đầu ghi nhật ký"));
     _debugStatus->setText(
         (on ? tr("Đang ghi vào:\n%1") : tr("Tệp nhật ký:\n%1"))

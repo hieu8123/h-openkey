@@ -44,12 +44,13 @@ std::string driverXkbSymbols();
 // no thanh symbols/custom trong XKB root he thong.
 bool installDriverXkbLayout(std::string& error);
 
-// GNOME phai dang dung source xkb "custom"; neu con de source khac thi cac ma
-// rieng se bi hieu thanh phim media. Kiem tra truoc khi grab.
-bool driverXkbLayoutIsActive(std::string& error);
+// Kiểm tra symbols đã được cài. Không đọc GNOME/gsettings ở runtime để driver
+// vẫn khởi động trên desktop khác và khi nguồn hiện tại là IBus/Fcitx.
+bool driverXkbLayoutIsInstalled(std::string& error);
 
-// Tach rieng de kiem thu hoi quy chuoi "uint32 0" cua gsettings.
-bool parseDriverSourceIndex(const std::string& text, size_t& index);
+// Tim vi tri ('xkb', 'custom') trong GVariant sources cua GNOME. Chi dung luc
+// chuyen tu engine khac ve tieng Viet, tuyet doi khong goi tren duong tung phim.
+bool findDriverSourceIndex(const std::string& sources, size_t& index);
 
 } // namespace openkey
 

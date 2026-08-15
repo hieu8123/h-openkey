@@ -22,6 +22,10 @@ bool setDebugLogging(bool on);
 
 bool debugLoggingEnabled();
 
+// Chỉ phản ánh file do công tắc UI mở. OPENKEY_DEBUG=1 có thể bật stderr độc
+// lập mà không làm giao diện báo nhầm rằng đang ghi file.
+bool debugFileLoggingEnabled();
+
 // Duong dan file log, ke ca khi dang tat — de bang dieu khien hien cho nguoi
 // dung biet ma gui di.
 const std::string& debugLogPath();

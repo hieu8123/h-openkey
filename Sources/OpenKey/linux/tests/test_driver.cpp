@@ -63,9 +63,13 @@ char32_t typeStroke(xkb_state* state, const openkey::DriverKeyStroke& stroke) {
 
 void testMappings() {
     size_t sourceIndex = 99;
-    check(openkey::parseDriverSourceIndex("uint32 0\n", sourceIndex) &&
-              sourceIndex == 0,
-          "phai doc uint32 0 thanh source 0, khong phai 32");
+    check(openkey::findDriverSourceIndex(
+              "[('xkb', 'us'), ('ibus', 'mozc-jp'), ('xkb', 'custom')]",
+              sourceIndex) && sourceIndex == 2,
+          "phai tim dung vi tri xkb:custom trong sources GNOME");
+    check(!openkey::findDriverSourceIndex(
+              "@a(ss) [('xkb', 'us'), ('ibus', 'mozc-jp')]", sourceIndex),
+          "khong duoc bao co xkb:custom khi source chua duoc cai");
     const auto& reserved = openkey::driverReservedKeycodes();
     check(reserved.size() == 2, "chi duoc dung hai keycode modifier rieng");
     check(std::set<uint16_t>(reserved.begin(), reserved.end()).size() == reserved.size(),
@@ -85,6 +89,8 @@ void testMappings() {
           "ASCII hoa phai dung phim vat ly US");
     check(openkey::driverKeyStrokeFor(U'?').evdevCode == KEY_SLASH,
           "dau ASCII Shift phai duoc anh xa");
+    check(openkey::driverKeyStrokeFor(0x202F).evdevCode != 0,
+          "thieu ky tu dem sua autocomplete U+202F");
 }
 
 void testGeneratedXkb() {
@@ -126,6 +132,8 @@ void testGeneratedXkb() {
                   "XKB phai giu dung ASCII hoa");
             check(typeStroke(state, openkey::driverKeyStrokeFor(U'@')) == U'@',
                   "XKB phai giu dung dau ASCII Shift");
+            check(typeStroke(state, openkey::driverKeyStrokeFor(0x202F)) == 0x202F,
+                  "XKB phai phat dung ky tu dem autocomplete U+202F");
             xkb_state_unref(state);
         }
         xkb_keymap_unref(keymap);

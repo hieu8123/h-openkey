@@ -13,7 +13,6 @@
 #include <map>
 #include <regex>
 #include <sstream>
-#include <stdexcept>
 #include <utility>
 
 namespace openkey {
@@ -78,6 +77,9 @@ std::vector<char32_t> mappedCharacters() {
         0x0300, 0x0301, 0x0302, 0x0303, 0x0306, 0x0309, 0x031B, 0x0323,
     };
     chars.insert(chars.end(), std::begin(marks), std::end(marks));
+    // U+202F la ky tu dem ma OpenKey goc dung de huy selection autocomplete
+    // truoc khi Backspace; slot cuoi cung duoc de NoSymbol.
+    chars.push_back(0x202F);
     return chars;
 }
 
@@ -167,16 +169,6 @@ std::string xkbSymbol(char32_t cp) {
     std::ostringstream out;
     out << 'U' << std::uppercase << std::hex << static_cast<uint32_t>(cp);
     return out.str();
-}
-
-std::string readCommand(const char* command) {
-    std::string out;
-    FILE* pipe = popen(command, "r");
-    if (!pipe) return out;
-    char chunk[256];
-    while (std::fgets(chunk, sizeof(chunk), pipe)) out += chunk;
-    if (pclose(pipe) != 0) out.clear();
-    return out;
 }
 
 std::filesystem::path userConfigRoot(std::string& error) {
@@ -272,19 +264,21 @@ bool installDriverXkbLayout(std::string& error) {
                           error);
 }
 
-bool parseDriverSourceIndex(const std::string& text, size_t& index) {
-    std::smatch match;
-    const std::regex trailingNumber("([0-9]+)\\s*$");
-    if (!std::regex_search(text, match, trailingNumber)) return false;
-    try {
-        index = std::stoul(match[1].str());
-        return true;
-    } catch (...) {
-        return false;
+bool findDriverSourceIndex(const std::string& sources, size_t& index) {
+    const std::regex entry(
+        "\\('([^']+)'\\s*,\\s*'([^']+)'\\)");
+    size_t current = 0;
+    for (std::sregex_iterator it(sources.begin(), sources.end(), entry), end;
+         it != end; ++it, ++current) {
+        if ((*it)[1].str() == "xkb" && (*it)[2].str() == "custom") {
+            index = current;
+            return true;
+        }
     }
+    return false;
 }
 
-bool driverXkbLayoutIsActive(std::string& error) {
+bool driverXkbLayoutIsInstalled(std::string& error) {
     const std::filesystem::path base = userConfigRoot(error);
     if (base.empty()) return false;
     if (!std::filesystem::exists(base / "xkb" / "symbols" / "hopenkey")) {
@@ -313,35 +307,10 @@ bool driverXkbLayoutIsActive(std::string& error) {
                 "hãy chạy lại trình cài đặt";
         return false;
     }
-    const std::string sources = readCommand(
-        "gsettings get org.gnome.desktop.input-sources sources 2>/dev/null");
-    const std::string current = readCommand(
-        "gsettings get org.gnome.desktop.input-sources current 2>/dev/null");
-    if (sources.empty() || current.empty()) {
-        error = "không đọc được input source hiện tại của GNOME";
-        return false;
-    }
-
-    size_t active = 0;
-    // gsettings tra "uint32 0". Lay chu so dau tien se thanh 32 (nam trong ten
-    // kieu uint32), la loi khien driver khong khoi dong sau khi dang nhap.
-    if (!parseDriverSourceIndex(current, active)) {
-        error = "GNOME trả về chỉ số input source không hợp lệ: " + current;
-        return false;
-    }
-
-    const std::regex tuple("\\('([^']+)',\\s*'([^']+)'\\)");
-    size_t index = 0;
-    for (auto it = std::sregex_iterator(sources.begin(), sources.end(), tuple);
-         it != std::sregex_iterator(); ++it, ++index) {
-        if (index != active) continue;
-        if ((*it)[1] == "xkb" && (*it)[2] == "custom") return true;
-        error = "input source hiện tại là " + (*it)[1].str() + ":" +
-                (*it)[2].str() + ", cần xkb:custom (H-OpenKey)";
-        return false;
-    }
-    error = "không tìm thấy input source hiện tại trong cấu hình GNOME";
-    return false;
+    // Runtime khong duoc phu thuoc GNOME/gsettings: KDE, Sway va compositor
+    // khac co cach quan ly source rieng. Installer GNOME chiu trach nhiem them
+    // source; tren desktop khac nguoi dung kich hoat custom theo cach cua no.
+    return true;
 }
 
 } // namespace openkey

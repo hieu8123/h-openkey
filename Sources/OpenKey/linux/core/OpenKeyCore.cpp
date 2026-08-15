@@ -73,13 +73,6 @@ bool isNonTextKey(uint32_t keycode) {
 
 bool coreDebug() { return debugLoggingEnabled(); }
 
-// Nguoi go tieng Viet van hay dung lai vai giay giua hai tu de nghi — nguong
-// qua ngan (vd 1.5s) se hieu nham thanh doi ngu canh va xoa mat bo dem dang
-// go dot, lam mat luon dau vua go thay vi thuc su bi "go nhanh qua an chu".
-// Chi coi la doi ngu canh (chuyen tab, dan van ban...) khi khoang lang dai
-// hon han mot lan dung suy nghi thong thuong.
-constexpr auto kIdleResetThreshold = std::chrono::milliseconds(4000);
-
 } // namespace
 
 OpenKeyCore::OpenKeyCore(IBackend& backend) : _backend(backend) {
@@ -113,6 +106,15 @@ void OpenKeyCore::setSuspended(bool suspended) {
 
 void OpenKeyCore::toggleLanguage() {
     std::lock_guard<std::recursive_mutex> lock(_mutex);
+    if (vLanguage != 1 && onVietnameseActivationRequested) {
+        if (_vietnameseActivationPending) return;
+        _vietnameseActivationPending = true;
+        resetTypingState();
+        onVietnameseActivationRequested();
+        return;
+    }
+
+    _vietnameseActivationPending = false;
     vLanguage = vLanguage == 1 ? 0 : 1;
     resetTypingState();
     rememberCurrentApp();
@@ -124,6 +126,20 @@ void OpenKeyCore::toggleLanguage() {
     if (onStateChanged) {
         onStateChanged();
     }
+}
+
+void OpenKeyCore::completeVietnameseActivation(bool activated) {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
+    if (!_vietnameseActivationPending) return;
+    _vietnameseActivationPending = false;
+    if (!activated) {
+        resetTypingState();
+        return;
+    }
+    vLanguage = 1;
+    resetTypingState();
+    rememberCurrentApp();
+    if (onStateChanged) onStateChanged();
 }
 
 void OpenKeyCore::rememberCurrentApp() {
@@ -236,6 +252,10 @@ void OpenKeyCore::appendEngineChar(uint32_t data, std::u32string& text,
 void OpenKeyCore::emitResult(int backspaceCount, const std::u32string& text,
                        const std::vector<SentChar>& costs) {
     DeleteRequest del;
+    // Cung workaround cua OpenKey tren Windows/macOS: mot ky tu dem vo hinh
+    // lam Chromium/Excel bo phan autocomplete dang chon truoc khi xoa. Engine
+    // danh dau extCode=4 cho cac ca tuyet doi khong duoc chen ky tu dem.
+    del.clearAutocomplete = vFixRecommendBrowser && _hook->extCode != 4;
 
     for (int i = 0; i < backspaceCount; i++) {
         if (!_sent.empty()) {
@@ -260,13 +280,6 @@ KeyVerdict OpenKeyCore::onKey(const KeyEvent& ev) {
     if (_suspended) {
         return KeyVerdict::Forward;
     }
-
-    const auto now = std::chrono::steady_clock::now();
-    if (_hasLastKeyTime && now - _lastKeyTime > kIdleResetThreshold) {
-        resetTypingState();
-    }
-    _lastKeyTime = now;
-    _hasLastKeyTime = true;
 
     // Phai xet ca luc nha phim, vi phim tat chi gom phim bo tro duoc kich hoat
     // khi nha ra chu khong phai khi bam xuong.

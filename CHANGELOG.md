@@ -8,6 +8,54 @@
 
 ##### Version 1.3.0: (16/08/2026)
 
+- Đổi tên hiển thị của nguồn `xkb:custom` từ “A user-defined custom Layout”
+  thành **H-OpenKey Layout**, mã ngắn **HOK**, trong metadata XKB mà GNOME đọc.
+  ID nội bộ vẫn giữ nguyên để Mutter nhận layout ổn định; trình gỡ cài đặt hoàn
+  nguyên nhãn mặc định nếu metadata chưa bị thành phần khác thay đổi.
+- Khi bật lại tiếng Việt trên GNOME, H-OpenKey tự chuyển nguồn hiện tại về
+  `xkb:custom` rồi mới bật engine. Nếu `gsettings` thất bại hoặc nguồn bị thiếu,
+  ứng dụng giữ chế độ tiếng Anh và cảnh báo ở khay, không phát carrier Unicode
+  bằng keymap Mozc/IBus rồi nuốt chữ. Đã xoá parser `uint32 current` không còn
+  được runtime sử dụng.
+- Ẩn các công tắc Smart Switch, nhớ bảng mã theo ứng dụng và tự nhận bố cục khác
+  trên driver trực tiếp vì backend không cung cấp app-id/focus; không còn tuỳ
+  chọn bật được nhưng không có tác dụng.
+- Nếu thiết bị vẫn báo có phím giữ sau ba giây, khay hiển thị cảnh báo bàn phím
+  chưa được grab. Trạng thái được đẩy theo sự kiện trên fd pending, không polling
+  hoặc quét lại `/dev/input`.
+- Khi ring buffer chẩn đoán đầy, logger đếm riêng bản ghi rơi cho file và stderr,
+  rồi ghi marker `[dropped N]` từ luồng flusher; đường gõ vẫn không chờ I/O.
+- Cho phép H-OpenKey chạy song song với IBus, Fcitx và các engine tiếng Nhật,
+  tiếng Hàn. Ứng dụng và trình cài đặt không còn dừng tiến trình, vô hiệu hoá
+  autostart hay xoá biến môi trường của bộ gõ khác; danh sách nguồn nhập GNOME
+  được giữ nguyên và chỉ bổ sung `xkb:custom` nếu còn thiếu.
+- Thêm watchdog độc lập cho đường `evdev → uinput`: nếu luồng dispatch treo quá
+  hai giây hoặc đầu ra uinput lỗi, tiến trình chủ động abort để kernel trả grab;
+  unit systemd còn giám sát từ bên ngoài để xử lý cả trường hợp process bị đóng
+  băng hoàn toàn.
+- Sửa trường hợp gợi ý tự động của thanh địa chỉ Chrome nuốt Backspace đầu tiên
+  khi chuỗi Telex chỉ cần xoá một ký tự, bằng cùng tín hiệu xoá gợi ý mà OpenKey
+  trên Windows/macOS sử dụng; không thêm timer vào đường gõ.
+- Tách ghi file chẩn đoán khỏi `OPENKEY_DEBUG` và chuyển toàn bộ I/O sang luồng
+  flusher riêng. Đường gõ chỉ đẩy vào ring buffer RAM; file có quyền `0600` và
+  được drain khi người dùng dừng ghi.
+- Tự chuyển driver sang pass-through khi logind/GNOME báo phiên bị khoá, để
+  Telex/VNI không sửa mật khẩu trên màn hình khoá; bộ đệm được reset ở luồng
+  evdev thay vì gọi core đồng thời từ DBus.
+- Bàn phím đang giữ phím lúc service khởi động được theo dõi bằng chính fd evdev
+  chưa grab. Sự kiện nhả cuối cùng kích hoạt grab, không cần restart, hotplug hay
+  quét thiết bị theo timer.
+- Bỏ heuristic tự reset từ sau bốn giây không gõ. Dừng lại để suy nghĩ không còn
+  làm phím dấu kế tiếp mất tác dụng; ngữ cảnh được reset bằng click, phím điều
+  hướng/ngắt từ và tín hiệu khoá phiên thực tế.
+- Trình cài đặt không còn thêm tài khoản vào nhóm `input`, không tự tải nhánh
+  `master` khi release thiếu source asset, và hỏi rõ trước khi thêm H-OpenKey
+  Layout dựa trên US. Việc tích hợp tự động ngoài GNOME và layout ngoài US được
+  ghi là chưa hỗ trợ thay vì quảng cáo quá phạm vi.
+- Khoá single-instance dùng `QLockFile` nguyên tử trước khi xoá socket IPC; hai
+  tiến trình khởi động cùng lúc không còn có thể xoá socket của nhau rồi cùng
+  grab và nhân đôi phím.
+
 - Thêm driver trực tiếp `evdev → OpenKeyCore → uinput`. Backspace và ký tự thay
   thế đi qua cùng một bàn phím ảo nên không cần preedit, giao thức chèn văn bản
   hay khoảng chờ khi sửa dấu.

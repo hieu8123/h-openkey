@@ -17,7 +17,8 @@ constexpr char kShowPanelMessage[] = "show-control-panel";
 
 } // namespace
 
-SingleInstance::SingleInstance(QObject* parent) : QObject(parent) {
+SingleInstance::SingleInstance(QObject* parent)
+    : QObject(parent), _lock(lockPath()) {
     connect(&_server, &QLocalServer::newConnection, this, [this] {
         while (_server.hasPendingConnections()) {
             QLocalSocket* client = _server.nextPendingConnection();
@@ -49,6 +50,11 @@ QString SingleInstance::socketName() {
     return QString("h-openkey-%1").arg(getuid());
 }
 
+QString SingleInstance::lockPath() {
+    return QDir(QDir::tempPath()).filePath(
+        QString("h-openkey-%1.lock").arg(getuid()));
+}
+
 bool SingleInstance::notifyRunningInstance() {
     QLocalSocket socket;
     socket.connectToServer(socketName());
@@ -66,14 +72,13 @@ bool SingleInstance::notifyRunningInstance() {
 }
 
 bool SingleInstance::claim() {
-    if (_server.listen(socketName())) {
-        return true;
-    }
-
-    // Socket cu con sot lai sau mot lan tat khong sach. Khong co ban nao tra
-    // loi (da kiem o notifyRunningInstance) nen xoa di roi thu lai.
+    // QLockFile la hang rao atomic. Hai process cung khoi dong khong the cung
+    // xoa socket cua nhau roi ca hai grab ban phim.
+    if (!_lock.tryLock(0)) return false;
     QLocalServer::removeServer(socketName());
-    return _server.listen(socketName());
+    if (_server.listen(socketName())) return true;
+    _lock.unlock();
+    return false;
 }
 
 } // namespace openkey
