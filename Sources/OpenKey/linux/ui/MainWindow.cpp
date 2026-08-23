@@ -201,8 +201,7 @@ QWidget* MainWindow::buildBasicTab() {
     addCheck(grid, row++, 1, tr("Gõ tắt phụ âm cuối: g→ng, h→nh, k→ch"),
              &vQuickEndConsonant);
 
-    addCheck(grid, row, 0, tr("Tự động viết hoa đầu câu"), &vUpperCaseFirstChar);
-    addCheck(grid, row++, 1, tr("Sửa lỗi gợi ý của trình duyệt"), &vFixRecommendBrowser);
+    addCheck(grid, row++, 0, tr("Tự động viết hoa đầu câu"), &vUpperCaseFirstChar);
 
     addCheck(grid, row, 0, tr("Tạm tắt kiểm tra chính tả bằng Ctrl"), &vTempOffSpelling);
     addCheck(grid, row++, 1, tr("Tạm tắt bộ gõ bằng Alt"), &vTempOffOpenKey);

@@ -323,8 +323,6 @@ void DriverBackend::sendResult(const DeleteRequest& del,
     const std::vector<uint16_t> released = releaseHeldModifiers();
     if (_capsLock) tapVirtualKey(KEY_CAPSLOCK);
 
-    if (del.clearAutocomplete) typeCodePoint(0x202F);
-    if (del.clearAutocomplete) tapVirtualKey(KEY_BACKSPACE);
     for (uint32_t i = 0; i < del.keyPresses; ++i) {
         tapVirtualKey(KEY_BACKSPACE);
     }

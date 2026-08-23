@@ -17,7 +17,7 @@ int vCheckSpelling = 1;
 int vUseModernOrthography = 0;      // 0: oa, uy kieu cu
 int vQuickTelex = 0;
 int vRestoreIfWrongSpelling = 0;
-int vFixRecommendBrowser = 1;
+int vFixRecommendBrowser = 0;       // workaround U+202F cu, khong dung tren driver
 int vUseMacro = 1;
 int vUseMacroInEnglishMode = 1;
 int vAutoCapsMacro = 0;
@@ -43,7 +43,7 @@ void resetAppStateToDefault() {
     vUseModernOrthography = 0;
     vQuickTelex = 0;
     vRestoreIfWrongSpelling = 0;
-    vFixRecommendBrowser = 1;
+    vFixRecommendBrowser = 0;
     vUseMacro = 1;
     vUseMacroInEnglishMode = 1;
     vAutoCapsMacro = 0;

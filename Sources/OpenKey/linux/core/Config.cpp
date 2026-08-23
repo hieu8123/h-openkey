@@ -40,7 +40,6 @@ std::vector<Field> settingFields() {
         {"useModernOrthography", &vUseModernOrthography},
         {"quickTelex", &vQuickTelex},
         {"restoreIfWrongSpelling", &vRestoreIfWrongSpelling},
-        {"fixRecommendBrowser", &vFixRecommendBrowser},
         {"useMacro", &vUseMacro},
         {"useMacroInEnglishMode", &vUseMacroInEnglishMode},
         {"autoCapsMacro", &vAutoCapsMacro},

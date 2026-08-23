@@ -45,18 +45,17 @@ bool looksLikePointer(int fd) {
     unsigned long bits[(KEY_MAX / (sizeof(unsigned long) * 8)) + 1] = {};
     if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits) < 0) return false;
     return bitSet(bits, BTN_LEFT) || bitSet(bits, BTN_RIGHT) ||
-           bitSet(bits, BTN_MIDDLE);
+           bitSet(bits, BTN_MIDDLE) || bitSet(bits, BTN_TOUCH);
 }
 
-bool isPointerButton(uint16_t code) {
-    return code >= BTN_LEFT && code <= BTN_TASK;
-}
-
-bool keepOnlyPointerButtons(int fd) {
+bool keepOnlyContextBreakKeys(int fd) {
     unsigned long keyMask[(KEY_MAX / (sizeof(unsigned long) * 8)) + 1] = {};
     for (int code = BTN_LEFT; code <= BTN_TASK; ++code) {
         setBit(keyMask, code);
     }
+    // Tap-to-click duoc libinput tong hop tu BTN_TOUCH + ABS; kernel khong phat
+    // BTN_LEFT. Giu BTN_TOUCH de doi o bang cach cham touchpad van ngat tu cu.
+    setBit(keyMask, BTN_TOUCH);
 
     struct input_mask mask {};
     mask.type = EV_KEY;
@@ -78,6 +77,10 @@ bool keepOnlyPointerButtons(int fd) {
 }
 
 } // namespace
+
+bool isContextBreakKey(uint16_t code) {
+    return (code >= BTN_LEFT && code <= BTN_TASK) || code == BTN_TOUCH;
+}
 
 EvdevKeyboard::~EvdevKeyboard() { stop(); }
 
@@ -208,7 +211,7 @@ bool EvdevKeyboard::tryAddPointerDevice(const std::string& path) {
 
     // Neu kernel ho tro event mask, chi dua click vao epoll. Neu khong ho tro,
     // van giu fallback cu de context reset hoat dong tren kernel cu.
-    keepOnlyPointerButtons(fd);
+    keepOnlyContextBreakKeys(fd);
 
     struct epoll_event ev {};
     ev.events = EPOLLIN;
@@ -446,7 +449,7 @@ void EvdevKeyboard::waitAndDispatch(int timeoutMs) {
                 if (ev.type == EV_KEY && grabbedKeyboard) {
                     handleEvent(ev);
                 } else if (ev.type == EV_KEY && ev.value == 1 &&
-                           isPointerButton(ev.code) && onContextBreak) {
+                           isContextBreakKey(ev.code) && onContextBreak) {
                     onContextBreak();
                 }
                 continue;

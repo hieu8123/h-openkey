@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "DriverKeymap.h"
+#include "EvdevKeyboard.h"
 #include "UInputKeyboard.h"
 
 namespace {
@@ -89,8 +90,10 @@ void testMappings() {
           "ASCII hoa phai dung phim vat ly US");
     check(openkey::driverKeyStrokeFor(U'?').evdevCode == KEY_SLASH,
           "dau ASCII Shift phai duoc anh xa");
-    check(openkey::driverKeyStrokeFor(0x202F).evdevCode != 0,
-          "thieu ky tu dem sua autocomplete U+202F");
+    check(openkey::isContextBreakKey(BTN_LEFT),
+          "click chuot phai ngat ngu canh go");
+    check(openkey::isContextBreakKey(BTN_TOUCH),
+          "tap-to-click tren touchpad phai ngat ngu canh go");
 }
 
 void testGeneratedXkb() {
@@ -132,8 +135,6 @@ void testGeneratedXkb() {
                   "XKB phai giu dung ASCII hoa");
             check(typeStroke(state, openkey::driverKeyStrokeFor(U'@')) == U'@',
                   "XKB phai giu dung dau ASCII Shift");
-            check(typeStroke(state, openkey::driverKeyStrokeFor(0x202F)) == 0x202F,
-                  "XKB phai phat dung ky tu dem autocomplete U+202F");
             xkb_state_unref(state);
         }
         xkb_keymap_unref(keymap);

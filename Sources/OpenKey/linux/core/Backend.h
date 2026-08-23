@@ -50,9 +50,6 @@ enum class KeyVerdict {
 struct DeleteRequest {
     uint32_t utf8Bytes = 0;   // cho delete_surrounding_text
     uint32_t keyPresses = 0;  // so lan BackSpace phat qua uinput
-    // Thanh dia chi trinh duyet co the dang chon phan autocomplete. Chen mot
-    // ky tu dem truoc se chot/huy selection de Backspace xoa dung van ban da go.
-    bool clearAutocomplete = false;
 };
 
 class IBackend {

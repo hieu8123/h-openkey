@@ -252,11 +252,6 @@ void OpenKeyCore::appendEngineChar(uint32_t data, std::u32string& text,
 void OpenKeyCore::emitResult(int backspaceCount, const std::u32string& text,
                        const std::vector<SentChar>& costs) {
     DeleteRequest del;
-    // Cung workaround cua OpenKey tren Windows/macOS: mot ky tu dem vo hinh
-    // lam Chromium/Excel bo phan autocomplete dang chon truoc khi xoa. Engine
-    // danh dau extCode=4 cho cac ca tuyet doi khong duoc chen ky tu dem.
-    del.clearAutocomplete = vFixRecommendBrowser && _hook->extCode != 4;
-
     for (int i = 0; i < backspaceCount; i++) {
         if (!_sent.empty()) {
             const SentChar& c = _sent.back();

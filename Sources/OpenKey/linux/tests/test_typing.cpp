@@ -83,6 +83,11 @@ void telexTests() {
     check("looi", typeKeys("looi", vTelex, 0), "lôi");
     check("loio", typeKeys("loio", vTelex, 0), "lôi");
     check("looix", typeKeys("looix", vTelex, 0), "lỗi");
+    // Hoi quy cho cac nguyen am kep tung hay hong trong input Chrome. Core
+    // phai chi yeu cau thay chu that, khong chen ky tu dem U+202F xen giua.
+    check("khoong", typeKeys("khoong", vTelex, 0), "không");
+    check("khuaan", typeKeys("khuaan", vTelex, 0), "khuân");
+    check("khuoon", typeKeys("khuoon", vTelex, 0), "khuôn");
     // Mac dinh la kieu dat dau cu, nen "hoaf" phai ra "hòa" chu khong phai "hoà".
     check("hoaf (kieu cu)", typeKeys("hoaf", vTelex, 0), "hòa");
     check("nhuwng", typeKeys("nhuwng", vTelex, 0), "nhưng");
@@ -178,26 +183,6 @@ void mouseContextBreakTest() {
     check("click roi 'lee'", backend.buffer, "lê");
 }
 
-void chromiumAutocompleteTest() {
-    std::printf("Sua selection autocomplete truoc khi Backspace:\n");
-    openkey::resetAppStateToDefault();
-
-    openkey::FakeBackend backend;
-    openkey::OpenKeyCore core(backend);
-    core.attach();
-    for (char c : std::string("looi")) {
-        openkey::KeyEvent ev;
-        ev.pressed = true;
-        ev.keycode = keycodeForChar(c);
-        backend.feed(ev);
-    }
-    check("looi + autocomplete", backend.buffer, "lôi");
-    if (backend.autocompleteFlushCalls == 0) {
-        std::printf("  FAIL core khong yeu cau huy autocomplete\n");
-        failures++;
-    }
-}
-
 void languageActivationTest() {
     std::printf("Chi bat tieng Viet sau khi layout san sang:\n");
     openkey::resetAppStateToDefault();
@@ -238,7 +223,6 @@ int main() {
     multiWordTest();
     modifierKeyTest();
     mouseContextBreakTest();
-    chromiumAutocompleteTest();
     languageActivationTest();
 
     if (failures == 0) {

@@ -77,9 +77,6 @@ std::vector<char32_t> mappedCharacters() {
         0x0300, 0x0301, 0x0302, 0x0303, 0x0306, 0x0309, 0x031B, 0x0323,
     };
     chars.insert(chars.end(), std::begin(marks), std::end(marks));
-    // U+202F la ky tu dem ma OpenKey goc dung de huy selection autocomplete
-    // truoc khi Backspace; slot cuoi cung duoc de NoSymbol.
-    chars.push_back(0x202F);
     return chars;
 }
 

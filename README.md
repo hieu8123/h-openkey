@@ -1,7 +1,7 @@
 # H-OpenKey
 
 [![Giấy phép](https://img.shields.io/badge/gi%E1%BA%A5y%20ph%C3%A9p-GPL--3.0-blue.svg)](LICENSE)
-[![Phiên bản](https://img.shields.io/badge/phi%C3%AAn%20b%E1%BA%A3n-1.3.0-brightgreen.svg)](CHANGELOG.md)
+[![Phiên bản](https://img.shields.io/badge/phi%C3%AAn%20b%E1%BA%A3n-1.3.1-brightgreen.svg)](CHANGELOG.md)
 [![Nền tảng](https://img.shields.io/badge/n%E1%BB%81n%20t%E1%BA%A3ng-Linux-lightgrey.svg)](#-tương-thích)
 [![Backend](https://img.shields.io/badge/backend-evdev%20%2B%20uinput-orange.svg)](Sources/OpenKey/linux/README.md)
 [![Standard Readme](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
@@ -174,7 +174,7 @@ Nếu ring buffer RAM đầy, luồng gõ bỏ bản ghi thay vì chờ I/O; flu
 
 ## 📦 Cài đặt
 
-Bản ổn định hiện tại: [H-OpenKey Linux 1.3.0](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.0).
+Bản ổn định hiện tại: [H-OpenKey Linux 1.3.1](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.1).
 
 > [!WARNING]
 > Trình cài đặt tự động hiện chỉ dành cho **GNOME có `gsettings`** và layout

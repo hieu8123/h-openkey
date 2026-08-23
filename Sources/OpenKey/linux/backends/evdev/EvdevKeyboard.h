@@ -23,6 +23,10 @@
 
 namespace openkey {
 
+// Click chuot va lan cham dau tien tren touchpad deu co the doi o nhap.
+// Tach ham nay de kiem thu duoc tap-to-click ma khong can thiet bi that.
+bool isContextBreakKey(uint16_t code);
+
 struct EvdevKeyEvent {
     uint32_t x11Keycode = 0; // evdev + 8, dung quy uoc chung voi phan con lai
     bool pressed = false;

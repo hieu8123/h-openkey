@@ -11,5 +11,6 @@ add_test(NAME debug_log COMMAND test_debug_log)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TEST_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 add_executable(test_driver test_driver.cpp)
-target_link_libraries(test_driver PRIVATE openkey_driver PkgConfig::TEST_XKBCOMMON)
+target_link_libraries(test_driver PRIVATE openkey_driver openkey_evdev
+    PkgConfig::TEST_XKBCOMMON)
 add_test(NAME driver COMMAND test_driver)

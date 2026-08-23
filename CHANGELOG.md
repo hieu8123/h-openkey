@@ -6,6 +6,21 @@
 
 ## H-OpenKey (Linux)
 
+##### Version 1.3.1: (23/08/2026)
+
+- Sửa lỗi đổi ô nhập bằng thao tác tap-to-click trên touchpad nhưng bộ đệm từ
+  cũ không được ngắt. Driver nay giữ và nhận `BTN_TOUCH` bên cạnh nút chuột,
+  nên lần gõ đầu trong ô mới không còn bị ghép với nội dung của ô trước.
+- Bỏ workaround chèn rồi xoá ký tự đệm U+202F trước mỗi lần thay chữ. Driver
+  trực tiếp đã bảo đảm Backspace và ký tự thay thế đi cùng một hàng sự kiện;
+  ký tự đệm chỉ tạo thêm các lần `beforeinput`/`input`, khiến Chrome và những ô
+  do JavaScript quản lý đôi lúc khôi phục giá trị cũ hoặc nuốt mất chữ.
+- Bỏ công tắc “Sửa lỗi gợi ý của trình duyệt” không còn phù hợp với driver trực
+  tiếp. Cấu hình cũ vẫn đọc an toàn nhưng trường này được bỏ qua và sẽ biến mất
+  ở lần lưu cấu hình tiếp theo.
+- Thêm kiểm thử hồi quy cho `khoong → không`, `khuaan → khuân`,
+  `khuoon → khuôn` và cho thao tác ngắt ngữ cảnh bằng `BTN_TOUCH`.
+
 ##### Version 1.3.0: (16/08/2026)
 
 - Đổi tên hiển thị của nguồn `xkb:custom` từ “A user-defined custom Layout”
