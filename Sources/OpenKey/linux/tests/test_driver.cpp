@@ -71,6 +71,29 @@ void testMappings() {
     check(!openkey::findDriverSourceIndex(
               "@a(ss) [('xkb', 'us'), ('ibus', 'mozc-jp')]", sourceIndex),
           "khong duoc bao co xkb:custom khi source chua duoc cai");
+
+    std::string updatedSources;
+    check(openkey::ensureDriverSource(
+              "[('xkb', 'us'), ('ibus', 'mozc-jp')]", updatedSources,
+              sourceIndex) &&
+              sourceIndex == 2 &&
+              updatedSources ==
+                  "[('xkb', 'us'), ('ibus', 'mozc-jp'), ('xkb', 'custom')]",
+          "phai khoi phuc xkb:custom ma giu nguyen source hien co");
+    check(openkey::ensureDriverSource("@a(ss) []", updatedSources,
+                                      sourceIndex) &&
+              sourceIndex == 0 &&
+              updatedSources == "@a(ss) [('xkb', 'custom')]",
+          "phai them xkb:custom vao danh sach rong co annotation");
+    const std::string completeSources =
+        "[('xkb', 'us'), ('xkb', 'custom'), ('ibus', 'mozc-jp')]";
+    check(openkey::ensureDriverSource(completeSources, updatedSources,
+                                      sourceIndex) &&
+              sourceIndex == 1 && updatedSources == completeSources,
+          "khong duoc them trung xkb:custom");
+    check(!openkey::ensureDriverSource("khong-phai-gvariant", updatedSources,
+                                       sourceIndex),
+          "phai tu choi danh sach source hong");
     const auto& reserved = openkey::driverReservedKeycodes();
     check(reserved.size() == 2, "chi duoc dung hai keycode modifier rieng");
     check(std::set<uint16_t>(reserved.begin(), reserved.end()).size() == reserved.size(),

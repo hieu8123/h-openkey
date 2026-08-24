@@ -19,6 +19,7 @@
 #include "Config.h"
 #include "Engine.h"
 #include "OpenKeyCore.h"
+#include "UpdateChecker.h"
 
 namespace openkey {
 namespace {
@@ -76,8 +77,9 @@ QIcon makeIcon(bool vietnamese) {
 
 } // namespace
 
-TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
-    : QObject(parent), _config(config), _core(core) {
+TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, UpdateChecker& updates,
+                   QObject* parent)
+    : QObject(parent), _config(config), _core(core), _updates(updates) {
     _menu = new QMenu();
 
     _languageAction = _menu->addAction(tr("Gõ tiếng Việt"));
@@ -90,6 +92,41 @@ TrayIcon::TrayIcon(Config& config, OpenKeyCore& core, QObject* parent)
 
     connect(_menu->addAction(tr("Bảng điều khiển…")), &QAction::triggered, this,
             [this] { emit controlPanelRequested(); });
+
+    _updateAction = _menu->addAction(
+        QIcon::fromTheme(QStringLiteral("view-refresh")),
+        tr("Kiểm tra cập nhật…"));
+    connect(_updateAction, &QAction::triggered, this, [this] {
+        if (_updates.hasAvailableRelease()) {
+            _updates.openAvailableRelease();
+        } else {
+            _updates.checkForUpdates(true);
+        }
+    });
+    connect(&_updates, &UpdateChecker::checkStarted, this, [this] {
+        if (!_updates.hasAvailableRelease()) _updateAction->setEnabled(false);
+    });
+    connect(&_updates, &UpdateChecker::checkFinished, this,
+            [this](bool available, const QString& version,
+                   const QString& message, bool userInitiated) {
+                _updateAction->setEnabled(true);
+                _updateAction->setText(
+                    available ? tr("Tải H-OpenKey %1…").arg(version)
+                              : tr("Kiểm tra cập nhật…"));
+                _updateAction->setIcon(QIcon::fromTheme(
+                    available ? QStringLiteral("software-update-available")
+                              : QStringLiteral("view-refresh")));
+                if (available || userInitiated) {
+                    _updateNotificationPending = available;
+                    _tray.showMessage(tr("H-OpenKey"), message,
+                                      QSystemTrayIcon::Information, 8000);
+                }
+            });
+    connect(&_tray, &QSystemTrayIcon::messageClicked, this, [this] {
+        if (!_updateNotificationPending) return;
+        _updateNotificationPending = false;
+        _updates.openAvailableRelease();
+    });
 
     connect(_menu->addAction(tr("Công cụ chuyển mã…")), &QAction::triggered, this, [] {
         // Khong co cua so cha: bang dieu khien co the dang dong.
@@ -180,6 +217,7 @@ void TrayIcon::refresh() {
 void TrayIcon::show() { _tray.show(); }
 
 void TrayIcon::showWarning(const QString& message) {
+    _updateNotificationPending = false;
     _tray.showMessage(tr("H-OpenKey"), message, QSystemTrayIcon::Warning, 8000);
 }
 

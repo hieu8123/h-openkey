@@ -6,6 +6,8 @@
 
 #include <linux/input.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -273,6 +275,38 @@ bool findDriverSourceIndex(const std::string& sources, size_t& index) {
         }
     }
     return false;
+}
+
+bool ensureDriverSource(const std::string& sources, std::string& updated,
+                        size_t& index) {
+    if (findDriverSourceIndex(sources, index)) {
+        updated = sources;
+        return true;
+    }
+
+    const size_t listBegin = sources.find('[');
+    const size_t listEnd = sources.rfind(']');
+    if (listBegin == std::string::npos || listEnd <= listBegin) return false;
+
+    const std::regex entry("\\('[^']+'\\s*,\\s*'[^']+'\\)");
+    const std::string body = sources.substr(listBegin + 1,
+                                            listEnd - listBegin - 1);
+    std::string remainder = std::regex_replace(body, entry, "");
+    remainder.erase(
+        std::remove_if(remainder.begin(), remainder.end(), [](unsigned char c) {
+            return std::isspace(c) || c == ',';
+        }),
+        remainder.end());
+    if (!remainder.empty()) return false;
+
+    index = static_cast<size_t>(
+        std::distance(std::sregex_iterator(body.begin(), body.end(), entry),
+                      std::sregex_iterator()));
+    updated = sources;
+    const bool empty = body.find_first_not_of(" \t\r\n") == std::string::npos;
+    updated.insert(listEnd, empty ? "('xkb', 'custom')"
+                                  : ", ('xkb', 'custom')");
+    return true;
 }
 
 bool driverXkbLayoutIsInstalled(std::string& error) {

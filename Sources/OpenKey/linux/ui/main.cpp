@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QSystemTrayIcon>
+#include <QTabWidget>
 #include <QWindow>
 
 #include <cstdio>
@@ -32,6 +33,7 @@
 #include "StartupManager.h"
 #include "Theme.h"
 #include "TrayIcon.h"
+#include "UpdateChecker.h"
 
 namespace {
 
@@ -95,19 +97,36 @@ bool usesGnomeInputSources() {
            desktop.contains("pop", Qt::CaseInsensitive);
 }
 
-bool activateDriverInputSource(QString& error) {
+bool prepareDriverInputSource(bool activate, QString& error) {
     static const QString schema = "org.gnome.desktop.input-sources";
+    std::string layoutError;
+    if (!openkey::driverXkbLayoutIsInstalled(layoutError)) {
+        error = QString::fromStdString(layoutError);
+        return false;
+    }
+
     QByteArray sources;
     if (!runBoundedCommand("gsettings", {"get", schema, "sources"},
                            &sources, error)) {
         return false;
     }
     size_t index = 0;
-    if (!openkey::findDriverSourceIndex(sources.toStdString(), index)) {
-        error = "không có H-OpenKey Layout (xkb:custom) trong nguồn nhập GNOME; "
-                "hãy chạy lại trình cài đặt";
+    std::string updatedSources;
+    if (!openkey::ensureDriverSource(sources.toStdString(), updatedSources,
+                                     index)) {
+        error = "danh sách nguồn nhập GNOME không hợp lệ";
         return false;
     }
+    if (updatedSources != sources.toStdString() &&
+        !runBoundedCommand(
+            "gsettings",
+            {"set", schema, "sources",
+             QString::fromStdString(updatedSources).trimmed()},
+            nullptr, error)) {
+        return false;
+    }
+    if (!activate) return true;
+
     if (!runBoundedCommand("gsettings",
                            {"set", schema, "current",
                             QString("uint32 %1").arg(index)},
@@ -123,6 +142,10 @@ bool activateDriverInputSource(QString& error) {
                           ignored);
     }
     return true;
+}
+
+bool activateDriverInputSource(QString& error) {
+    return prepareDriverInputSource(true, error);
 }
 
 } // namespace
@@ -165,6 +188,7 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName("H-OpenKey");
     QApplication::setApplicationDisplayName("H-OpenKey");
+    QApplication::setApplicationVersion(QStringLiteral(OPENKEY_VERSION));
     QApplication::setOrganizationName("OpenKey");
     QApplication::setDesktopFileName("h-openkey");
     openkey::applyTheme(app);
@@ -193,8 +217,11 @@ int main(int argc, char** argv) {
 
     QString sourceActivationError;
     const bool manageGnomeSource = usesGnomeInputSources();
-    if (manageGnomeSource && vLanguage == 1 &&
-        !activateDriverInputSource(sourceActivationError)) {
+    const bool requestedVietnamese = vLanguage == 1;
+    if (manageGnomeSource &&
+        !prepareDriverInputSource(requestedVietnamese,
+                                  sourceActivationError) &&
+        requestedVietnamese) {
         // Khong cho core phat carrier Unicode trong khi GNOME van dung keymap
         // Mozc/IBus/us. Che do Anh an toan hon viec nuot ky tu khong thong bao.
         vLanguage = 0;
@@ -246,7 +273,8 @@ int main(int argc, char** argv) {
                          [] { QApplication::quit(); });
     }
 
-    openkey::TrayIcon tray(config, core);
+    openkey::UpdateChecker updateChecker;
+    openkey::TrayIcon tray(config, core, updateChecker);
 
     // Phim tat va lan kich hoat sau khi doi source deu co the doi ngon ngu tu
     // luong khac; bieu tuong khay phai luon phan anh trang thai moi.
@@ -294,7 +322,7 @@ int main(int argc, char** argv) {
     openkey::ProcessWatchdog watchdog(*backend);
     watchdog.start();
 
-    openkey::MainWindow window(config, core);
+    openkey::MainWindow window(config, core, updateChecker);
     window.resize(680, 520);
 
     auto showPanel = [&] {
@@ -324,18 +352,38 @@ int main(int argc, char** argv) {
     // Qt tự thêm biểu tượng khi khay xuất hiện sau thời điểm ứng dụng khởi động,
     // nhưng chỉ khi QSystemTrayIcon đã được đặt visible từ trước.
     tray.show();
+    QTimer::singleShot(2500, &updateChecker,
+                       [&updateChecker] { updateChecker.checkForUpdates(); });
     if (!sourceActivationError.isEmpty()) {
-        tray.showWarning(
-            QObject::tr("Đã giữ chế độ tiếng Anh để tránh mất chữ: %1")
-                .arg(sourceActivationError));
+        const QString warning = requestedVietnamese
+            ? QObject::tr("Đã giữ chế độ tiếng Anh để tránh mất chữ: %1")
+                  .arg(sourceActivationError)
+            : QObject::tr("H-OpenKey Layout chưa sẵn sàng: %1")
+                  .arg(sourceActivationError);
+        tray.showWarning(warning);
     }
 
     // Dung khi lam giao dien: tu chup cua so ra tep roi thoat, de doi chieu
     // thiet ke ma khong can cong cu chup anh cua desktop.
     if (const char* shot = std::getenv("OPENKEY_SCREENSHOT")) {
         const QString path = QString::fromUtf8(shot);
+        bool validTab = false;
+        const int tabIndex =
+            qEnvironmentVariableIntValue("OPENKEY_SCREENSHOT_TAB", &validTab);
+        if (validTab) {
+            if (auto* tabs = window.findChild<QTabWidget*>()) {
+                tabs->setCurrentIndex(tabIndex);
+            }
+        }
+        int screenshotDelay = 900;
+        bool validDelay = false;
+        const int requestedDelay = qEnvironmentVariableIntValue(
+            "OPENKEY_SCREENSHOT_DELAY_MS", &validDelay);
+        if (validDelay && requestedDelay >= 100 && requestedDelay <= 10000) {
+            screenshotDelay = requestedDelay;
+        }
         showPanel();
-        QTimer::singleShot(900, &app, [&window, path] {
+        QTimer::singleShot(screenshotDelay, &app, [&window, path] {
             window.grab().save(path);
             QApplication::quit();
         });

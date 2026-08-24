@@ -52,6 +52,12 @@ bool driverXkbLayoutIsInstalled(std::string& error);
 // chuyen tu engine khac ve tieng Viet, tuyet doi khong goi tren duong tung phim.
 bool findDriverSourceIndex(const std::string& sources, size_t& index);
 
+// Dam bao danh sach GVariant cua GNOME co xkb:custom. Neu bi GNOME loai sau
+// dang nhap, them lai o cuoi ma van giu nguyen cac source XKB/IBus khac.
+// Tra ve false neu dau vao khong phai mot mang (ss) hop le.
+bool ensureDriverSource(const std::string& sources, std::string& updated,
+                        size_t& index);
+
 } // namespace openkey
 
 #endif // OPENKEY_LINUX_DRIVER_KEYMAP_H

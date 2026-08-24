@@ -23,12 +23,14 @@ namespace openkey {
 
 class Config;
 class OpenKeyCore;
+class UpdateChecker;
 
 class TrayIcon : public QObject {
     Q_OBJECT
 
 public:
-    TrayIcon(Config& config, OpenKeyCore& core, QObject* parent = nullptr);
+    TrayIcon(Config& config, OpenKeyCore& core, UpdateChecker& updates,
+             QObject* parent = nullptr);
 
     void show();
     void refresh();
@@ -44,12 +46,15 @@ private:
 
     Config& _config;
     OpenKeyCore& _core;
+    UpdateChecker& _updates;
     QSystemTrayIcon _tray;
     QMenu* _menu = nullptr;
     QAction* _languageAction = nullptr;
+    QAction* _updateAction = nullptr;
     QActionGroup* _inputTypeGroup = nullptr;
     QActionGroup* _codeTableGroup = nullptr;
     QString _runtimeWarning;
+    bool _updateNotificationPending = false;
 };
 
 } // namespace openkey

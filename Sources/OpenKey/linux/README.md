@@ -156,7 +156,7 @@ bản ghi bị thiếu.
 
 ## Cài đặt bằng một lệnh
 
-[Tải H-OpenKey Linux 1.3.1](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.1),
+[Tải H-OpenKey Linux 1.3.2](https://github.com/hieu8123/h-openkey/releases/tag/linux-v1.3.2),
 hoặc cài đặt trực tiếp:
 
 > [!WARNING]

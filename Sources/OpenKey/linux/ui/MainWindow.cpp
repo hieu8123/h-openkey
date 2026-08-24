@@ -17,6 +17,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QTabWidget>
@@ -30,6 +31,7 @@
 #include "Engine.h"
 #include "OpenKeyCore.h"
 #include "StartupManager.h"
+#include "UpdateChecker.h"
 
 namespace openkey {
 namespace {
@@ -77,14 +79,16 @@ void selectValue(QComboBox* box, int value) {
 
 } // namespace
 
-MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
-    : QWidget(parent), _config(config), _core(core) {
+MainWindow::MainWindow(Config& config, OpenKeyCore& core,
+                       UpdateChecker& updates, QWidget* parent)
+    : QWidget(parent), _config(config), _core(core), _updates(updates) {
     setWindowTitle(tr("H-OpenKey — bộ gõ tiếng Việt"));
 
     auto* tabs = new QTabWidget(this);
     tabs->addTab(buildBasicTab(), tr("Cơ bản"));
     tabs->addTab(buildHotkeyTab(), tr("Phím tắt"));
     tabs->addTab(buildSystemTab(), tr("Hệ thống"));
+    tabs->addTab(buildDiagnosticsTab(), tr("Chẩn đoán"));
 
     auto* defaults = new QPushButton(tr("Thiết lập mặc định"));
     auto* saveButton = new QPushButton(tr("Lưu"));
@@ -113,6 +117,23 @@ MainWindow::MainWindow(Config& config, OpenKeyCore& core, QWidget* parent)
     root->addWidget(buildControlGroup());
     root->addWidget(tabs, 1);
     root->addLayout(bottom);
+
+    connect(&_updates, &UpdateChecker::checkStarted, this, [this] {
+        _updateStatus->setText(tr("Đang kiểm tra GitHub Releases…"));
+        _updateButton->setEnabled(false);
+    });
+    connect(&updates, &UpdateChecker::checkFinished, this,
+            [this](bool available, const QString& version,
+                   const QString& message, bool) {
+                _updateStatus->setText(message);
+                _updateButton->setEnabled(true);
+                _updateButton->setText(
+                    available ? tr("Tải bản %1").arg(version)
+                              : tr("Kiểm tra lại"));
+                _updateButton->setIcon(QIcon::fromTheme(
+                    available ? QStringLiteral("software-update-available")
+                              : QStringLiteral("view-refresh")));
+            });
 
     refreshFromState();
 }
@@ -328,7 +349,7 @@ QWidget* MainWindow::buildSystemTab() {
     layout->addLayout(grid);
 
     layout->addSpacing(12);
-    layout->addWidget(buildDebugGroup(page));
+    layout->addWidget(buildUpdateGroup(page));
 
     auto* info = new QLabel(
         tr("Cấu hình lưu tại ~/.config/openkey/config.json\n"
@@ -340,6 +361,41 @@ QWidget* MainWindow::buildSystemTab() {
     layout->addWidget(info);
     layout->addStretch(1);
     return page;
+}
+
+QWidget* MainWindow::buildDiagnosticsTab() {
+    auto* page = new QWidget(this);
+    auto* layout = new QVBoxLayout(page);
+    layout->addWidget(buildDebugGroup(page));
+    layout->addStretch(1);
+    return page;
+}
+
+QWidget* MainWindow::buildUpdateGroup(QWidget* parent) {
+    auto* group = new QGroupBox(tr("Phiên bản"), parent);
+    auto* grid = new QGridLayout(group);
+
+    auto* current = new QLabel(
+        tr("H-OpenKey %1").arg(QApplication::applicationVersion()), group);
+    _updateStatus = new QLabel(tr("Chưa kiểm tra bản mới."), group);
+    _updateStatus->setWordWrap(true);
+
+    _updateButton = new QPushButton(tr("Kiểm tra bản mới"), group);
+    _updateButton->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh")));
+    connect(_updateButton, &QPushButton::clicked, this, [this] {
+        if (_updates.hasAvailableRelease()) {
+            _updates.openAvailableRelease();
+        } else {
+            _updates.checkForUpdates(true);
+        }
+    });
+
+    grid->addWidget(current, 0, 0);
+    grid->addWidget(_updateStatus, 1, 0);
+    grid->addWidget(_updateButton, 0, 1, 2, 1,
+                    Qt::AlignRight | Qt::AlignVCenter);
+    grid->setColumnStretch(0, 1);
+    return group;
 }
 
 void MainWindow::setAutoStart(bool enabled) {

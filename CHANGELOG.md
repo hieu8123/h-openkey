@@ -6,6 +6,20 @@
 
 ## H-OpenKey (Linux)
 
+##### Version 1.3.2: (24/08/2026)
+
+- Khôi phục `xkb:custom` khi GNOME làm mất H-OpenKey Layout khỏi danh sách
+  nguồn nhập sau khi đăng nhập lại. Runtime xác nhận symbols hệ thống trước,
+  chỉ bổ sung source còn thiếu, giữ nguyên US/IBus và các bộ gõ khác, rồi mới
+  bật tiếng Việt; có kiểm thử cho danh sách rỗng, danh sách hỗn hợp và chống
+  thêm trùng.
+- Thêm kiểm tra bản phát hành Linux mới từ GitHub Releases. Bảng điều khiển và
+  menu khay hiển thị phiên bản hiện tại, thông báo khi có bản mới và mở đúng
+  trang tải HTTPS khi người dùng chủ động bấm cập nhật; không tự chạy installer
+  hoặc lệnh cần quyền quản trị.
+- Thêm trang giới thiệu GitHub Pages gọn nhẹ với ảnh chụp thật của ứng dụng,
+  hướng dẫn cài một lệnh và phạm vi hỗ trợ GNOME Wayland / US QWERTY.
+
 ##### Version 1.3.1: (23/08/2026)
 
 - Sửa lỗi đổi ô nhập bằng thao tác tap-to-click trên touchpad nhưng bộ đệm từ

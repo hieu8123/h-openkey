@@ -27,12 +27,14 @@ namespace openkey {
 
 class Config;
 class OpenKeyCore;
+class UpdateChecker;
 
 class MainWindow : public QWidget {
     Q_OBJECT
 
 public:
-    MainWindow(Config& config, OpenKeyCore& core, QWidget* parent = nullptr);
+    MainWindow(Config& config, OpenKeyCore& core, UpdateChecker& updates,
+               QWidget* parent = nullptr);
 
     // Nap lai gia tri tu cac bien engine len giao dien.
     void refreshFromState();
@@ -58,6 +60,8 @@ private:
     void readHotkeyFromUi();
     void writeHotkeyToUi();
     QWidget* buildSystemTab();
+    QWidget* buildDiagnosticsTab();
+    QWidget* buildUpdateGroup(QWidget* parent);
     void setAutoStart(bool enabled);
     QWidget* buildDebugGroup(QWidget* parent);
     void toggleDebugLogging();
@@ -73,6 +77,7 @@ private:
 
     Config& _config;
     OpenKeyCore& _core;
+    UpdateChecker& _updates;
 
     QComboBox* _codeTable = nullptr;
     QComboBox* _inputType = nullptr;
@@ -85,6 +90,8 @@ private:
     QLabel* _hotkeyPreview = nullptr;
     QPushButton* _debugToggle = nullptr;
     QLabel* _debugStatus = nullptr;
+    QLabel* _updateStatus = nullptr;
+    QPushButton* _updateButton = nullptr;
 
     std::vector<BoundCheck> _checks;
     bool _loading = false;
