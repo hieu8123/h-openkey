@@ -257,23 +257,13 @@ int main(int argc, char** argv) {
 
     openkey::SessionLockMonitor lockMonitor;
     QObject::connect(&lockMonitor, &openkey::SessionLockMonitor::lockedChanged,
-                     &app, [&backend, &core, manageGnomeSource](bool locked) {
+                     &app, [&backend, &core](bool locked) {
                          backend->setSecureInput(locked);
                          if (!locked) {
-                             // Sau khi mo khoa/resume, GNOME co the khoi phuc
-                             // input source mac dinh. Dong bo lai layout truoc
-                             // khi nhan phim dau tien, tranh go thang ky tu
-                             // ASCII cho toi khi nguoi dung doi Anh/Viet.
+                             // Chi xoa bo dem sau khi mo khoa. Khong tu dong
+                             // doi lai input source tai day vi viec do co the
+                             // lam GNOME lech trang thai Caps/Shift cua XKB.
                              core.resetTypingState();
-                             if (manageGnomeSource && vLanguage == 1) {
-                                 QString error;
-                                 if (!activateDriverInputSource(error) &&
-                                     !error.isEmpty()) {
-                                     std::fprintf(stderr,
-                                                  "OpenKey: không khôi phục được input source sau khi mở khóa: %s\n",
-                                                  error.toUtf8().constData());
-                                 }
-                             }
                          }
                      });
     lockMonitor.start();
