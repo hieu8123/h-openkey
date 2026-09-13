@@ -323,6 +323,14 @@ void DriverBackend::sendResult(const DeleteRequest& del,
     const std::vector<uint16_t> released = releaseHeldModifiers();
     if (_capsLock) tapVirtualKey(KEY_CAPSLOCK);
 
+    // Chrome co the dang hien goi y trong thanh dia chi va nuot lan
+    // Backspace dau tien. Tao mot ky tu tam roi xoa no de buoc o nhap
+    // chuyen sang trang thai van ban binh thuong truoc khi thay the dau.
+    if (del.keyPresses == 1 && !out.empty()) {
+        tapVirtualKey(KEY_SPACE);
+        tapVirtualKey(KEY_BACKSPACE);
+    }
+
     for (uint32_t i = 0; i < del.keyPresses; ++i) {
         tapVirtualKey(KEY_BACKSPACE);
     }
