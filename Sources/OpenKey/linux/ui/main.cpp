@@ -249,7 +249,12 @@ int main(int argc, char** argv) {
                     "/dev/uinput, sau đó đăng xuất rồi đăng nhập lại.")
                 .arg(QString::fromStdString(notice));
         std::fprintf(stderr, "OpenKey: %s\n", message.toUtf8().constData());
-        QMessageBox::warning(nullptr, "H-OpenKey", message);
+        // Khong dung QMessageBox::warning(): no chan luong chinh truoc khi
+        // ProcessWatchdog chay, systemd (WatchdogSec=3s) SIGKILL roi khoi dong
+        // lai vao dung loi do, lap toi khi het luot va service chet han.
+        auto* box = new QMessageBox(QMessageBox::Warning, "H-OpenKey", message);
+        box->setAttribute(Qt::WA_DeleteOnClose);
+        box->show();
     }
 
     openkey::OpenKeyCore core(*backend);

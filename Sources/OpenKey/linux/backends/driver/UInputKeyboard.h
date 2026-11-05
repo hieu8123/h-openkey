@@ -17,6 +17,11 @@ namespace openkey {
 inline constexpr const char* kOpenKeyVirtualKeyboardName =
     "H-OpenKey Virtual Keyboard";
 
+// Moi sendKey() la mot cap EV_KEY + SYN_REPORT, nen so chan giu moi dot ket
+// thuc dung SYN. Phai nho hon han 63 (hang doi evdev cua moi reader).
+inline constexpr size_t kMaxEventsPerWrite = 16;
+inline constexpr unsigned kChunkPauseUs = 2000;
+
 class UInputKeyboard {
 public:
     ~UInputKeyboard();

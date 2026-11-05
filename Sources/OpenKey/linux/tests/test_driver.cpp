@@ -191,6 +191,24 @@ void testLayoutInstaller() {
     std::filesystem::remove_all(made);
 }
 
+void testXkbGroupFromRulesNames() {
+    using namespace std::string_literals;
+    unsigned group = 99;
+    check(openkey::driverXkbGroupFromRulesNames(
+              "evdev\0pc105+inet\0us,custom,vn,us\0,,us,\0\0"s, group) &&
+              group == 1,
+          "custom phai la nhom 1 trong us,custom,vn,us");
+    check(openkey::driverXkbGroupFromRulesNames("evdev\0pc105\0custom\0\0\0"s,
+                                                group) &&
+              group == 0,
+          "setxkbmap -layout custom phai la nhom 0");
+    check(!openkey::driverXkbGroupFromRulesNames("evdev\0pc105\0us,vn\0\0\0"s,
+                                                 group),
+          "khong co custom thi khong duoc doi nhom");
+    check(!openkey::driverXkbGroupFromRulesNames("evdev"s, group),
+          "thuoc tinh hong khong duoc tra ve nhom");
+}
+
 void testUInputCanCreateDevice() {
     if (access("/dev/uinput", W_OK) != 0) {
         std::printf("SKIP: chua co quyen /dev/uinput\n");
@@ -208,6 +226,7 @@ int main() {
     testMappings();
     testGeneratedXkb();
     testLayoutInstaller();
+    testXkbGroupFromRulesNames();
     testUInputCanCreateDevice();
     if (failures == 0) {
         std::printf("Tat ca kiem thu driver deu dat.\n");

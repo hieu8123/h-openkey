@@ -309,6 +309,28 @@ bool ensureDriverSource(const std::string& sources, std::string& updated,
     return true;
 }
 
+bool driverXkbGroupFromRulesNames(const std::string& rulesNames,
+                                  unsigned& group) {
+    // Truong thu ba (layout) la danh sach phay, moi muc la mot nhom XKB.
+    size_t begin = 0;
+    for (int field = 0; field < 2; ++field) {
+        begin = rulesNames.find('\0', begin);
+        if (begin == std::string::npos) return false;
+        ++begin;
+    }
+    const std::string layouts =
+        rulesNames.substr(begin, rulesNames.find('\0', begin) - begin);
+    std::stringstream list(layouts);
+    std::string layout;
+    for (unsigned index = 0; std::getline(list, layout, ','); ++index) {
+        if (layout == "custom") {
+            group = index;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool driverXkbLayoutIsInstalled(std::string& error) {
     const std::filesystem::path base = userConfigRoot(error);
     if (base.empty()) return false;

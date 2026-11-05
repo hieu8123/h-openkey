@@ -58,6 +58,11 @@ bool findDriverSourceIndex(const std::string& sources, size_t& index);
 bool ensureDriverSource(const std::string& sources, std::string& updated,
                         size_t& index);
 
+// Doc gia tri thuoc tinh _XKB_RULES_NAMES cua X (rules\0model\0layout\0...)
+// va tra ve nhom XKB cua layout custom. False neu keymap khong co custom.
+bool driverXkbGroupFromRulesNames(const std::string& rulesNames,
+                                  unsigned& group);
+
 } // namespace openkey
 
 #endif // OPENKEY_LINUX_DRIVER_KEYMAP_H

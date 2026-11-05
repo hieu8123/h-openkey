@@ -4,12 +4,14 @@
 
 #include "DriverBackend.h"
 
+#include <dlfcn.h>
 #include <linux/input.h>
 #include <unistd.h>
 
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 #include <thread>
 
@@ -45,6 +47,92 @@ bool isModifier(uint16_t code) {
             return false;
     }
 }
+
+// Tren phien Xorg, moi lan tao ban phim ao (service khoi dong lai, cam them
+// ban phim) X co the tra nhom XKB ve nhom dau (thuong la us) trong khi GNOME van
+// hien custom. Luc do chu co dau thanh chu tron ("aa" -> "aa") cho toi khi nguoi
+// dung doi input source. Lop nay khoa lai dung nhom custom truoc khi go chu co
+// dau. Nap libX11 luc chay de goi cai dat khong can them thu vien phat trien.
+// Chi doi nhom (group), khong dong toi Caps/Shift.
+class XkbGroupGuard {
+public:
+    void ensureDriverGroup() {
+        if (!load()) return;
+        unsigned target = 0;
+        if (!readDriverGroup(target)) return;
+        XkbStateRec state{};
+        if (_getState(_display, kUseCoreKbd, &state) != 0) return;
+        if (state.group == target) return;
+        DRIVER_LOG("nhom XKB %u khac custom %u, khoa lai", state.group, target);
+        _lockGroup(_display, kUseCoreKbd, target);
+        _sync(_display, 0);
+    }
+
+private:
+    struct XkbStateRec {
+        unsigned char group, locked_group;
+        unsigned short base_group, latched_group;
+        unsigned char mods, base_mods, latched_mods, locked_mods, compat_state;
+        unsigned char grab_mods, compat_grab_mods, lookup_mods, compat_lookup_mods;
+        unsigned short ptr_buttons;
+    };
+    using Display = void;
+    static constexpr unsigned kUseCoreKbd = 0x0100;
+
+    bool load() {
+        if (_display) return true;
+        if (_failed) return false;
+        _failed = true; // chi thu mot lan
+        const char* session = std::getenv("XDG_SESSION_TYPE");
+        if (!session || std::strcmp(session, "x11") != 0) return false;
+        void* lib = dlopen("libX11.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (!lib) return false;
+        auto sym = [lib](const char* name) { return dlsym(lib, name); };
+        auto open = reinterpret_cast<Display* (*)(const char*)>(sym("XOpenDisplay"));
+        _internAtom = reinterpret_cast<decltype(_internAtom)>(sym("XInternAtom"));
+        _rootWindow = reinterpret_cast<decltype(_rootWindow)>(sym("XDefaultRootWindow"));
+        _getProperty = reinterpret_cast<decltype(_getProperty)>(sym("XGetWindowProperty"));
+        _free = reinterpret_cast<decltype(_free)>(sym("XFree"));
+        _getState = reinterpret_cast<decltype(_getState)>(sym("XkbGetState"));
+        _lockGroup = reinterpret_cast<decltype(_lockGroup)>(sym("XkbLockGroup"));
+        _sync = reinterpret_cast<decltype(_sync)>(sym("XSync"));
+        if (!open || !_internAtom || !_rootWindow || !_getProperty || !_free ||
+            !_getState || !_lockGroup || !_sync) return false;
+        // Display rieng cho luong driver; Qt dung ket noi xcb cua no.
+        _display = open(nullptr);
+        if (!_display) return false;
+        _rulesAtom = _internAtom(_display, "_XKB_RULES_NAMES", 1);
+        _failed = _rulesAtom == 0;
+        return !_failed;
+    }
+
+    bool readDriverGroup(unsigned& group) {
+        unsigned long type = 0, items = 0, after = 0;
+        int format = 0;
+        unsigned char* data = nullptr;
+        if (_getProperty(_display, _rootWindow(_display), _rulesAtom, 0, 1024,
+                         0, 0, &type, &format, &items, &after, &data) != 0 ||
+            !data) {
+            return false;
+        }
+        const std::string names(reinterpret_cast<const char*>(data), items);
+        _free(data);
+        return driverXkbGroupFromRulesNames(names, group);
+    }
+
+    Display* _display = nullptr;
+    bool _failed = false;
+    unsigned long _rulesAtom = 0;
+    unsigned long (*_internAtom)(Display*, const char*, int) = nullptr;
+    unsigned long (*_rootWindow)(Display*) = nullptr;
+    int (*_getProperty)(Display*, unsigned long, unsigned long, long, long, int,
+                        unsigned long, unsigned long*, int*, unsigned long*,
+                        unsigned long*, unsigned char**) = nullptr;
+    int (*_free)(void*) = nullptr;
+    int (*_getState)(Display*, unsigned, XkbStateRec*) = nullptr;
+    int (*_lockGroup)(Display*, unsigned, unsigned) = nullptr;
+    int (*_sync)(Display*, int) = nullptr;
+};
 
 bool isHeldModifier(uint16_t code) {
     switch (code) {
@@ -87,6 +175,7 @@ private:
 
     EvdevKeyboard _evdev;
     UInputKeyboard _uinput;
+    XkbGroupGuard _xkbGroup; // chi dung tren luong worker
     std::set<uint16_t> _virtualKeysDown;
     std::set<uint16_t> _swallowedPhysicalKeys;
     std::set<uint16_t> _tappedPhysicalKeys;
@@ -109,18 +198,20 @@ bool DriverBackend::start() {
         _error = "layout H-OpenKey chưa được cài đúng: " + _error;
         return false;
     }
-    // GNOME/Mutter khong phai luc nao cung dong bo keymap moi sang XWayland
-    // trong cung phien. Lenh nay chi cap nhat keymap, khong nam tren duong go.
-    if (std::getenv("DISPLAY") != nullptr) {
-        const int status = std::system(
-            "setxkbmap -layout custom >/dev/null 2>&1");
-        DRIVER_LOG("dong bo XWayland layout custom: status=%d", status);
-    }
     if (!_uinput.start(_error)) return false;
 
     // UI_DEV_CREATE tra ve truoc khi udev va compositor mo xong thiet bi. Day
     // chi la thoi gian khoi dong, khong nam tren duong go phim.
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    // GNOME/Mutter khong phai luc nao cung dong bo keymap moi sang XWayland
+    // trong cung phien. Chay SAU khi tao ban phim ao: Xorg gan layout mac dinh
+    // (/etc/default/keyboard) cho thiet bi vua cam, chay truoc thi bi de mat.
+    if (std::getenv("DISPLAY") != nullptr) {
+        const int status = std::system(
+            "setxkbmap -layout custom >/dev/null 2>&1");
+        DRIVER_LOG("dong bo X layout custom: status=%d", status);
+    }
 
     _evdev.onPendingKeyboardCountChanged = [this](size_t count) {
         _pendingKeyboardCount.store(count, std::memory_order_release);
@@ -315,6 +406,16 @@ void DriverBackend::sendResult(const DeleteRequest& del,
                                const std::u32string& out) {
     DRIVER_LOG("sendResult: xoa %u phim, chen \"%s\"", del.keyPresses,
                utf8Encode(out).c_str());
+
+    // Chu co dau nam o level 3-8 cua layout custom; neu nhom XKB dang la us
+    // thi chung thanh chu tron. Kiem truoc khi go, khong o duong phim ASCII.
+    for (char32_t cp : out) {
+        const DriverKeyStroke stroke = driverKeyStrokeFor(cp);
+        if (stroke.level3 || stroke.level5) {
+            _xkbGroup.ensureDriverGroup();
+            break;
+        }
+    }
 
     // Ket qua core da mang dung hoa/thuong. Trung hoa toan bo modifier va Caps
     // trong vai su kien nay de XKB khong bien doi ket qua them lan nua, sau do

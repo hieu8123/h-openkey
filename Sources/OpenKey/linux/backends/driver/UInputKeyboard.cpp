@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 
@@ -98,14 +99,23 @@ void UInputKeyboard::beginBatch() {
 }
 
 bool UInputKeyboard::writePending() {
-    const char* data = reinterpret_cast<const char*>(_pending.data());
-    size_t remaining = _pending.size() * sizeof(struct input_event);
-    while (remaining > 0) {
-        const ssize_t written = write(_fd, data, remaining);
-        if (written < 0 && errno == EINTR) continue;
-        if (written <= 0) return false;
-        data += written;
-        remaining -= static_cast<size_t>(written);
+    // Kernel chi giu 63 su kien cho moi reader cua thiet bi (EVDEV_MIN_BUFFER_SIZE
+    // = 64). Ghi ca lo mot lan thi Xorg/libinput bao SYN_DROPPED va mat dau giua
+    // tu. Chia thanh dot nho, nghi ngan de reader kip rut hang doi.
+    // ponytail: nghi co dinh, reader tre > ~3 dot (6 ms) van co the mat su kien.
+    constexpr size_t kChunk = kMaxEventsPerWrite;
+    for (size_t begin = 0; begin < _pending.size(); begin += kChunk) {
+        if (begin > 0) usleep(kChunkPauseUs);
+        const size_t count = std::min(kChunk, _pending.size() - begin);
+        const char* data = reinterpret_cast<const char*>(&_pending[begin]);
+        size_t remaining = count * sizeof(struct input_event);
+        while (remaining > 0) {
+            const ssize_t written = write(_fd, data, remaining);
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) return false;
+            data += written;
+            remaining -= static_cast<size_t>(written);
+        }
     }
     return true;
 }
